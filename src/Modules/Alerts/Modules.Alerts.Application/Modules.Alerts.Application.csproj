@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Application\Application.csproj" />
+    <ProjectReference Include="..\Modules.Alerts.Domain\Modules.Alerts.Domain.csproj" />
+  </ItemGroup>
+</Project>

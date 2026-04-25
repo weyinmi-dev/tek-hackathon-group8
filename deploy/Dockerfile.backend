@@ -1,0 +1,52 @@
+# TelcoPilot — backend Dockerfile (modular monolith → ONE container)
+# Build context: repo root.
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+ARG BUILD_CONFIGURATION=Release
+WORKDIR /src
+
+# Layer caching: copy ALL csproj files first so `dotnet restore` is reusable.
+COPY ["Directory.Build.props", "."]
+COPY ["src/Application/Application.csproj",                                                  "src/Application/"]
+COPY ["src/Infrastructure/Infrastructure.csproj",                                            "src/Infrastructure/"]
+COPY ["src/SharedKernel/SharedKernel.csproj",                                                "src/SharedKernel/"]
+COPY ["src/ServiceDefaults/ServiceDefaults.csproj",                                          "src/ServiceDefaults/"]
+COPY ["src/Web.Api/Web.Api.csproj",                                                          "src/Web.Api/"]
+
+COPY ["src/Modules/Identity/Modules.Identity.Domain/Modules.Identity.Domain.csproj",         "src/Modules/Identity/Modules.Identity.Domain/"]
+COPY ["src/Modules/Identity/Modules.Identity.Api/Modules.Identity.Api.csproj",               "src/Modules/Identity/Modules.Identity.Api/"]
+COPY ["src/Modules/Identity/Modules.Identity.Application/Modules.Identity.Application.csproj","src/Modules/Identity/Modules.Identity.Application/"]
+COPY ["src/Modules/Identity/Modules.Identity.Infrastructure/Modules.Identity.Infrastructure.csproj","src/Modules/Identity/Modules.Identity.Infrastructure/"]
+
+COPY ["src/Modules/Network/Modules.Network.Domain/Modules.Network.Domain.csproj",            "src/Modules/Network/Modules.Network.Domain/"]
+COPY ["src/Modules/Network/Modules.Network.Api/Modules.Network.Api.csproj",                  "src/Modules/Network/Modules.Network.Api/"]
+COPY ["src/Modules/Network/Modules.Network.Application/Modules.Network.Application.csproj",  "src/Modules/Network/Modules.Network.Application/"]
+COPY ["src/Modules/Network/Modules.Network.Infrastructure/Modules.Network.Infrastructure.csproj","src/Modules/Network/Modules.Network.Infrastructure/"]
+
+COPY ["src/Modules/Alerts/Modules.Alerts.Domain/Modules.Alerts.Domain.csproj",               "src/Modules/Alerts/Modules.Alerts.Domain/"]
+COPY ["src/Modules/Alerts/Modules.Alerts.Api/Modules.Alerts.Api.csproj",                     "src/Modules/Alerts/Modules.Alerts.Api/"]
+COPY ["src/Modules/Alerts/Modules.Alerts.Application/Modules.Alerts.Application.csproj",     "src/Modules/Alerts/Modules.Alerts.Application/"]
+COPY ["src/Modules/Alerts/Modules.Alerts.Infrastructure/Modules.Alerts.Infrastructure.csproj","src/Modules/Alerts/Modules.Alerts.Infrastructure/"]
+
+COPY ["src/Modules/Analytics/Modules.Analytics.Domain/Modules.Analytics.Domain.csproj",      "src/Modules/Analytics/Modules.Analytics.Domain/"]
+COPY ["src/Modules/Analytics/Modules.Analytics.Api/Modules.Analytics.Api.csproj",            "src/Modules/Analytics/Modules.Analytics.Api/"]
+COPY ["src/Modules/Analytics/Modules.Analytics.Application/Modules.Analytics.Application.csproj","src/Modules/Analytics/Modules.Analytics.Application/"]
+COPY ["src/Modules/Analytics/Modules.Analytics.Infrastructure/Modules.Analytics.Infrastructure.csproj","src/Modules/Analytics/Modules.Analytics.Infrastructure/"]
+
+COPY ["src/Modules/Ai/Modules.Ai.Domain/Modules.Ai.Domain.csproj",                           "src/Modules/Ai/Modules.Ai.Domain/"]
+COPY ["src/Modules/Ai/Modules.Ai.Application/Modules.Ai.Application.csproj",                 "src/Modules/Ai/Modules.Ai.Application/"]
+COPY ["src/Modules/Ai/Modules.Ai.Infrastructure/Modules.Ai.Infrastructure.csproj",           "src/Modules/Ai/Modules.Ai.Infrastructure/"]
+
+RUN dotnet restore "src/Web.Api/Web.Api.csproj"
+
+COPY . .
+WORKDIR /src/src/Web.Api
+RUN dotnet publish "Web.Api.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
+WORKDIR /app
+EXPOSE 8080
+ENV ASPNETCORE_URLS=http://+:8080
+ENV ASPNETCORE_HTTP_PORTS=8080
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Web.Api.dll"]

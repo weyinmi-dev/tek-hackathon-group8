@@ -1,0 +1,46 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path="Directory.Build.props" />
+    <File Path="README.md" />
+    <File Path="docker-compose.yml" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Application/Application.csproj" />
+    <Project Path="src/Infrastructure/Infrastructure.csproj" />
+    <Project Path="src/SharedKernel/SharedKernel.csproj" />
+    <Project Path="src/ServiceDefaults/ServiceDefaults.csproj" />
+    <Project Path="src/Web.Api/Web.Api.csproj" />
+    <Project Path="src/AppHost/AppHost.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Modules.Identity.Api/Modules.Identity.Api.csproj" />
+    <Project Path="src/Modules/Identity/Modules.Identity.Application/Modules.Identity.Application.csproj" />
+    <Project Path="src/Modules/Identity/Modules.Identity.Domain/Modules.Identity.Domain.csproj" />
+    <Project Path="src/Modules/Identity/Modules.Identity.Infrastructure/Modules.Identity.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Network/">
+    <Project Path="src/Modules/Network/Modules.Network.Api/Modules.Network.Api.csproj" />
+    <Project Path="src/Modules/Network/Modules.Network.Application/Modules.Network.Application.csproj" />
+    <Project Path="src/Modules/Network/Modules.Network.Domain/Modules.Network.Domain.csproj" />
+    <Project Path="src/Modules/Network/Modules.Network.Infrastructure/Modules.Network.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Alerts/">
+    <Project Path="src/Modules/Alerts/Modules.Alerts.Api/Modules.Alerts.Api.csproj" />
+    <Project Path="src/Modules/Alerts/Modules.Alerts.Application/Modules.Alerts.Application.csproj" />
+    <Project Path="src/Modules/Alerts/Modules.Alerts.Domain/Modules.Alerts.Domain.csproj" />
+    <Project Path="src/Modules/Alerts/Modules.Alerts.Infrastructure/Modules.Alerts.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Analytics/">
+    <Project Path="src/Modules/Analytics/Modules.Analytics.Api/Modules.Analytics.Api.csproj" />
+    <Project Path="src/Modules/Analytics/Modules.Analytics.Application/Modules.Analytics.Application.csproj" />
+    <Project Path="src/Modules/Analytics/Modules.Analytics.Domain/Modules.Analytics.Domain.csproj" />
+    <Project Path="src/Modules/Analytics/Modules.Analytics.Infrastructure/Modules.Analytics.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Ai/">
+    <Project Path="src/Modules/Ai/Modules.Ai.Application/Modules.Ai.Application.csproj" />
+    <Project Path="src/Modules/Ai/Modules.Ai.Domain/Modules.Ai.Domain.csproj" />
+    <Project Path="src/Modules/Ai/Modules.Ai.Infrastructure/Modules.Ai.Infrastructure.csproj" />
+  </Folder>
+</Solution>

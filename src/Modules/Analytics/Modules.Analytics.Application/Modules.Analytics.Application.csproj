@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Application\Application.csproj" />
+    <ProjectReference Include="..\..\Network\Modules.Network.Api\Modules.Network.Api.csproj" />
+    <ProjectReference Include="..\..\Alerts\Modules.Alerts.Api\Modules.Alerts.Api.csproj" />
+    <ProjectReference Include="..\Modules.Analytics.Domain\Modules.Analytics.Domain.csproj" />
+  </ItemGroup>
+</Project>

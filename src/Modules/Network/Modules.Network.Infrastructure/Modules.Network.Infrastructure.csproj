@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Application\Application.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules.Network.Api\Modules.Network.Api.csproj" />
+    <ProjectReference Include="..\Modules.Network.Application\Modules.Network.Application.csproj" />
+  </ItemGroup>
+
+</Project>

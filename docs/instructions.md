@@ -1,0 +1,3 @@
+- I need the backend in a layered repository pattern not domain driven design.
+- All AI integrations should under infrastructure
+- Highlights the steps for creating or initializing a postgres db on the app
