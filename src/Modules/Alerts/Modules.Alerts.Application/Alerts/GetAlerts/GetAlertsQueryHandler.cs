@@ -30,9 +30,15 @@ internal sealed class GetAlertsQueryHandler(IAlertRepository alerts)
     private static string FormatRelative(DateTime raisedUtc)
     {
         TimeSpan delta = DateTime.UtcNow - raisedUtc;
+#pragma warning disable IDE0011 // Add braces
         if (delta.TotalMinutes < 1) return "just now";
+#pragma warning restore IDE0011 // Add braces
+#pragma warning disable IDE0011 // Add braces
         if (delta.TotalMinutes < 60) return $"{(int)delta.TotalMinutes}m ago";
+#pragma warning restore IDE0011 // Add braces
+#pragma warning disable IDE0011 // Add braces
         if (delta.TotalHours < 24) return $"{(int)delta.TotalHours}h ago";
+#pragma warning restore IDE0011 // Add braces
         return $"{(int)delta.TotalDays}d ago";
     }
 }

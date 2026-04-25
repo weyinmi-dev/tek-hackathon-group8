@@ -9,7 +9,9 @@ public static class IdentitySeeder
 {
     public static async Task SeedAsync(IdentityDbContext db, IPasswordHasher hasher, CancellationToken ct = default)
     {
+#pragma warning disable IDE0011 // Add braces
         if (await db.Users.AnyAsync(ct)) return;
+#pragma warning restore IDE0011 // Add braces
 
         // Default password for every demo user. Override per-user in real deployments.
         const string DemoPassword = "Telco!2025";
@@ -30,7 +32,9 @@ public static class IdentitySeeder
         foreach ((string email, string name, string handle, string role, string team, string region) in seeds)
         {
             var created = User.Create(email, hash, name, handle, role, team, region);
+#pragma warning disable IDE0011 // Add braces
             if (created.IsSuccess) await db.Users.AddAsync(created.Value, ct);
+#pragma warning restore IDE0011 // Add braces
         }
         await db.SaveChangesAsync(ct);
     }

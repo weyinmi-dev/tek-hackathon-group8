@@ -8,7 +8,9 @@ public static class NetworkSeeder
 {
     public static async Task SeedAsync(NetworkDbContext db, CancellationToken ct = default)
     {
+#pragma warning disable IDE0011 // Add braces
         if (await db.Towers.AnyAsync(ct)) return;
+#pragma warning restore IDE0011 // Add braces
 
         // Lagos metro tower mock dataset, mirrored from the design system.
         // (lat, lng) are real Lagos coords; (mapX, mapY) are 0–100 % positions

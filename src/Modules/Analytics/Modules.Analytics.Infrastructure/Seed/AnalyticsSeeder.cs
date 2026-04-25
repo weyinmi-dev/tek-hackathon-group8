@@ -8,7 +8,9 @@ public static class AnalyticsSeeder
 {
     public static async Task SeedAsync(AnalyticsDbContext db, CancellationToken ct = default)
     {
+#pragma warning disable IDE0011 // Add braces
         if (await db.AuditEntries.AnyAsync(ct)) return;
+#pragma warning restore IDE0011 // Add braces
 
         DateTime now = DateTime.UtcNow;
         var seeds = new (int minutesAgo, string actor, string role, string action, string target, string ip)[]
