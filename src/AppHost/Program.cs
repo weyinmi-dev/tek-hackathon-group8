@@ -15,13 +15,11 @@
 
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
-IResourceBuilder<ParameterResource> postgresPwd =
-    builder.AddParameter("postgres-password", secret: true);
 
 IResourceBuilder<PostgresServerResource> postgres = builder
-    .AddPostgres("postgres", password: postgresPwd)
+    .AddPostgres("postgres", port: 5723)
     .WithDataVolume("telcopilot-pg-data")
-    .WithLifetime(ContainerLifetime.Persistent);
+    .WithPgWeb();
 
 IResourceBuilder<PostgresDatabaseResource> db = postgres.AddDatabase("telcopilot");
 
@@ -30,9 +28,9 @@ IResourceBuilder<RedisResource> redis = builder
     .WithLifetime(ContainerLifetime.Persistent);
 
 IResourceBuilder<ProjectResource> webApi = builder.AddProject<Projects.Web_Api>("web-api")
-    .WithReference(db)
+    .WithReference(db, "Database")
     .WaitFor(db)
-    .WithReference(redis)
+    .WithReference(redis, "Cache")
     .WaitFor(redis)
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     // Forward user-secrets (Ai, Jwt) to the API process. The values themselves

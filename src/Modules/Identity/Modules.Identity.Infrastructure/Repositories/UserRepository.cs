@@ -6,8 +6,18 @@ namespace Modules.Identity.Infrastructure.Repositories;
 
 internal sealed class UserRepository(IdentityDbContext db) : IUserRepository
 {
-    public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
-        db.Users.FirstOrDefaultAsync(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase), ct);
+    public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default)
+    {
+        // Emails are stored in canonical lowercase form (see User.Create). Normalize the
+        // lookup the same way so plain == translates to a parameterized SQL equality
+        // and uses the unique index on Email.
+#pragma warning disable CA1308 // Normalize strings to uppercase
+
+        string normalized = email.Trim().ToLowerInvariant();
+#pragma warning restore CA1308 // Normalize strings to uppercase
+
+        return db.Users.FirstOrDefaultAsync(u => u.Email == normalized, ct);
+    }
 
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);

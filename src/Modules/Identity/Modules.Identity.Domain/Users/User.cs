@@ -53,7 +53,9 @@ public sealed class User : Entity
 
         if (!Roles.IsValid(role)) return Result.Failure<User>(UserErrors.RoleInvalid);
 
-        var user = new User(Guid.NewGuid(), email.Trim().ToUpperInvariant(), passwordHash, fullName, handle, role.ToUpperInvariant(), team, region);
+#pragma warning disable CA1308 // Normalize strings to uppercase
+        var user = new User(Guid.NewGuid(), email.Trim().ToLowerInvariant(), passwordHash, fullName, handle, role.ToUpperInvariant(), team, region);
+#pragma warning restore CA1308 // Normalize strings to uppercase
         user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.Role));
         return user;
     }
