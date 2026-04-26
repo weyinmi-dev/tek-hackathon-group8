@@ -50,19 +50,7 @@ internal sealed class GetMetricsQueryHandler(
             .Select(r =>
             {
                 // Extracted nested ternary into explicit logic to satisfy S3358.
-                string tone;
-                if (r.AvgSignalPct > 75)
-                {
-                    tone = "ok";
-                }
-                else if (r.AvgSignalPct > 50)
-                {
-                    tone = "warn";
-                }
-                else
-                {
-                    tone = "crit";
-                }
+                string tone = r.AvgSignalPct > 75 ? "ok" : r.AvgSignalPct > 50 ? "warn" : "crit";
 
                 return new RegionHealthMetric(
                     Name: r.Region,

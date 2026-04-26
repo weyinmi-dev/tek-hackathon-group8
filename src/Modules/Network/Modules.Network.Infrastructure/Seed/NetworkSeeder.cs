@@ -34,7 +34,7 @@ public static class NetworkSeeder
             ("TWR-OJO-002", "Festac Town","Festac",6.469,3.290,8,68,60,79,TowerStatus.Warn,"Crowd-sourced reports +40%"),
         };
 
-        foreach (var s in seeds)
+        foreach ((string code, string name, string region, double lat, double lng, double x, double y, int sig, int load, TowerStatus status, string? issue) s in seeds)
         {
             await db.Towers.AddAsync(
                 Tower.Create(s.code, s.name, s.region, s.lat, s.lng, s.x, s.y, s.sig, s.load, s.status, s.issue), ct);

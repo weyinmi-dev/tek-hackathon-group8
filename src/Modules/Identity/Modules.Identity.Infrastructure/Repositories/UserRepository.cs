@@ -7,7 +7,7 @@ namespace Modules.Identity.Infrastructure.Repositories;
 internal sealed class UserRepository(IdentityDbContext db) : IUserRepository
 {
     public Task<User?> GetByEmailAsync(string email, CancellationToken ct = default) =>
-        db.Users.FirstOrDefaultAsync(u => u.Email == email.ToLowerInvariant(), ct);
+        db.Users.FirstOrDefaultAsync(u => u.Email.Equals(email, StringComparison.OrdinalIgnoreCase), ct);
 
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
