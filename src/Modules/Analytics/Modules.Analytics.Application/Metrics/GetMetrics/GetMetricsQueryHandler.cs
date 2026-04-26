@@ -47,16 +47,15 @@ internal sealed class GetMetricsQueryHandler(
         };
 
         IReadOnlyList<RegionHealthMetric> regions = regionHealth
-            .Select(r =>
-            {
-                // Extracted nested ternary into explicit logic to satisfy S3358.
-                string tone = r.AvgSignalPct > 75 ? "ok" : r.AvgSignalPct > 50 ? "warn" : "crit";
-
-                return new RegionHealthMetric(
-                    Name: r.Region,
-                    AvgSignal: r.AvgSignalPct,
-                    Tone: tone);
-            })
+            .Select(r => new RegionHealthMetric(
+                Name: r.Region,
+                AvgSignal: r.AvgSignalPct,
+                Tone: r.AvgSignalPct switch
+                {
+                    > 75 => "ok",
+                    > 50 => "warn",
+                    _    => "crit",
+                }))
             .ToList();
 
         IReadOnlyList<IncidentTypeBreakdown> types =

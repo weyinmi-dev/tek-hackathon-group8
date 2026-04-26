@@ -27,7 +27,7 @@ public static class AnalyticsSeeder
             (30, "tunde.b",     "admin",    "auth.login",     "OAuth2 / Azure AD",                             "10.4.22.5"),
         };
 
-        foreach (var s in seeds)
+        foreach ((int minutesAgo, string actor, string role, string action, string target, string ip) s in seeds)
         {
             await db.AuditEntries.AddAsync(
                 AuditEntry.RecordAt(now.AddMinutes(-s.minutesAgo), s.actor, s.role, s.action, s.target, s.ip), ct);

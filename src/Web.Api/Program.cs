@@ -6,7 +6,7 @@ using Infrastructure;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Modules.Ai.Application;
 using Modules.Ai.Infrastructure;
 using Modules.Alerts.Application;
@@ -49,15 +49,9 @@ builder.Services.AddSwaggerGen(c =>
         BearerFormat = "JWT",
         In = ParameterLocation.Header
     });
-    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    c.AddSecurityRequirement(_ => new OpenApiSecurityRequirement
     {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            Array.Empty<string>()
-        }
+        { new OpenApiSecuritySchemeReference("Bearer"), new List<string>() }
     });
 });
 
@@ -66,19 +60,16 @@ JwtOptions jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName)
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer(options => options.TokenValidationParameters = new TokenValidationParameters
     {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidAudience = jwtOptions.Audience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret)),
-            ClockSkew = TimeSpan.FromSeconds(30)
-        };
+        ValidateIssuer = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = jwtOptions.Issuer,
+        ValidAudience = jwtOptions.Audience,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Secret)),
+        ClockSkew = TimeSpan.FromSeconds(30)
     });
 
 builder.Services.AddAuthorization(options =>

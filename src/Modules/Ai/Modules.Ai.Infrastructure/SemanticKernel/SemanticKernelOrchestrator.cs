@@ -29,7 +29,7 @@ internal sealed class SemanticKernelOrchestrator(
     : ICopilotOrchestrator
 {
     private const string SystemPrompt = """
-        You are TelcoPilot, an AI assistant embedded in a telco Network Operations Center
+        You are TelcoPilot, an AI assistant embedded in MTN Nigeria Network Operations Center
         for a Lagos, Nigeria metro carrier. The user is an on-call engineer, manager, or executive.
 
         You have three plugins:
