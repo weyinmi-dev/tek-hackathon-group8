@@ -1,5 +1,6 @@
 using Application.Abstractions.Messaging;
 using Modules.Ai.Application.SemanticKernel;
+using Modules.Ai.Domain;
 using Modules.Ai.Domain.Conversations;
 using Modules.Analytics.Api;
 using SharedKernel;
@@ -9,6 +10,7 @@ namespace Modules.Ai.Application.Copilot.AskCopilot;
 internal sealed class AskCopilotCommandHandler(
     ICopilotOrchestrator orchestrator,
     IChatLogRepository chatLog,
+    IUnitOfWork uow,
     IAnalyticsApi analytics)
     : ICommandHandler<AskCopilotCommand, CopilotAnswer>
 {
@@ -29,7 +31,7 @@ internal sealed class AskCopilotCommandHandler(
             answer: answer.Answer,
             skillTrace: string.Join(" → ", answer.SkillTrace.Select(s => $"{s.Skill}.{s.Function}")),
             confidence: answer.Confidence), cancellationToken);
-        await chatLog.SaveChangesAsync(cancellationToken);
+        await uow.SaveChangesAsync(cancellationToken);
 
         // Audit trail entry — appears in /audit page immediately.
         await analytics.RecordAsync(

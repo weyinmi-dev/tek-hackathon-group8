@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Modules.Ai.Application.SemanticKernel;
+using Modules.Ai.Domain;
 using Modules.Ai.Domain.Conversations;
 using Modules.Ai.Infrastructure.Database;
 using Modules.Ai.Infrastructure.Repositories;
@@ -24,6 +25,7 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IChatLogRepository, ChatLogRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
 

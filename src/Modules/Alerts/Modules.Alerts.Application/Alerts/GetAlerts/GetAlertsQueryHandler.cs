@@ -12,7 +12,7 @@ internal sealed class GetAlertsQueryHandler(IAlertRepository alerts)
         IReadOnlyList<Alert> rows = request switch
         {
             { ActiveOnly: true } => await alerts.ListActiveAsync(cancellationToken),
-            { Severity: { } sev } when Enum.TryParse<AlertSeverity>(sev, true, out var parsed)
+            { Severity: { } sev } when Enum.TryParse<AlertSeverity>(sev, true, out AlertSeverity parsed)
                 => await alerts.ListBySeverityAsync(parsed, cancellationToken),
             _ => await alerts.ListAsync(cancellationToken)
         };

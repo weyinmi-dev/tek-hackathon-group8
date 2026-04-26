@@ -17,8 +17,6 @@ internal sealed class UserRepository(IdentityDbContext db) : IUserRepository
 
     public Task<int> CountAsync(CancellationToken ct = default) => db.Users.CountAsync(ct);
 
-    public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
-
     public async Task<IReadOnlyList<User>> ListAsync(CancellationToken ct = default) =>
         await db.Users.AsNoTracking().OrderBy(u => u.FullName).ToListAsync(ct);
 }

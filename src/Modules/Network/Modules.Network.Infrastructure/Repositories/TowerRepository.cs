@@ -19,6 +19,4 @@ internal sealed class TowerRepository(NetworkDbContext db) : ITowerRepository
         await db.Towers.AddRangeAsync(towers, ct);
 
     public Task<int> CountAsync(CancellationToken ct = default) => db.Towers.CountAsync(ct);
-
-    public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

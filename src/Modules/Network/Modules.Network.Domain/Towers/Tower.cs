@@ -70,5 +70,4 @@ public interface ITowerRepository
     Task<IReadOnlyList<Tower>> ListByRegionAsync(string region, CancellationToken cancellationToken = default);
     Task AddRangeAsync(IEnumerable<Tower> towers, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
-    Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Modules.Identity.Api;
 using Modules.Identity.Application.Authentication;
+using Modules.Identity.Domain;
 using Modules.Identity.Domain.RefreshTokens;
 using Modules.Identity.Domain.Users;
 using Modules.Identity.Infrastructure.Api;
@@ -30,6 +31,7 @@ public static class DependencyInjection
 
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IRefreshTokenRepository, RefreshTokenRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IIdentityApi, IdentityApi>();
 
         return services;

@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Modules.Alerts.Api;
+using Modules.Alerts.Domain;
 using Modules.Alerts.Domain.Alerts;
 using Modules.Alerts.Infrastructure.Api;
 using Modules.Alerts.Infrastructure.Database;
@@ -22,6 +23,7 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IAlertRepository, AlertRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAlertsApi, AlertsApi>();
         return services;
     }

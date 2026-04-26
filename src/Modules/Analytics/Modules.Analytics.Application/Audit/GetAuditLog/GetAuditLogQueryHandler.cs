@@ -1,3 +1,4 @@
+using System.Globalization;
 using Application.Abstractions.Messaging;
 using Modules.Analytics.Domain.Audit;
 using SharedKernel;
@@ -12,7 +13,7 @@ internal sealed class GetAuditLogQueryHandler(IAuditRepository audit)
         IReadOnlyList<AuditEntry> rows = await audit.ListRecentAsync(request.Take, cancellationToken);
         IReadOnlyList<AuditEntryDto> dtos = rows
             .Select(e => new AuditEntryDto(
-                e.OccurredAtUtc.ToString("HH:mm:ss"),
+                Time: e.OccurredAtUtc.ToString("HH:mm:ss", CultureInfo.InvariantCulture),
                 e.Actor,
                 e.Role,
                 e.Action,

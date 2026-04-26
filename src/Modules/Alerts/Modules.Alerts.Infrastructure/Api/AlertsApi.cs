@@ -5,15 +5,15 @@ namespace Modules.Alerts.Infrastructure.Api;
 
 internal sealed class AlertsApi(IAlertRepository alerts) : IAlertsApi
 {
-    public async Task<IReadOnlyList<AlertSnapshot>> ListActiveAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<AlertSnapshot>> ListActiveAsync(CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<Alert> rows = await alerts.ListActiveAsync(ct);
+        IReadOnlyList<Alert> rows = await alerts.ListActiveAsync(cancellationToken);
         return rows.Select(Map).ToList();
     }
 
-    public async Task<IReadOnlyList<AlertSnapshot>> ListAllAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<AlertSnapshot>> ListAllAsync(CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<Alert> rows = await alerts.ListAsync(ct);
+        IReadOnlyList<Alert> rows = await alerts.ListAsync(cancellationToken);
         return rows.Select(Map).ToList();
     }
 

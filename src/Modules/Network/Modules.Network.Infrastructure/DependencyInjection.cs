@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Modules.Network.Api;
+using Modules.Network.Domain;
 using Modules.Network.Domain.Towers;
 using Modules.Network.Infrastructure.Api;
 using Modules.Network.Infrastructure.Database;
@@ -22,6 +23,7 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<ITowerRepository, TowerRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<INetworkApi, NetworkApi>();
         return services;
     }

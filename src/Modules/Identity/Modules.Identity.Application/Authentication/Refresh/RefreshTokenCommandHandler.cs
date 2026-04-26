@@ -1,5 +1,6 @@
 using Application.Abstractions.Messaging;
 using Modules.Identity.Application.Authentication.Login;
+using Modules.Identity.Domain;
 using Modules.Identity.Domain.RefreshTokens;
 using Modules.Identity.Domain.Users;
 using SharedKernel;
@@ -9,6 +10,7 @@ namespace Modules.Identity.Application.Authentication.Refresh;
 internal sealed class RefreshTokenCommandHandler(
     IUserRepository users,
     IRefreshTokenRepository refreshTokens,
+    IUnitOfWork uow,
     IJwtTokenService tokens)
     : ICommandHandler<RefreshTokenCommand, LoginResponse>
 {
@@ -33,7 +35,7 @@ internal sealed class RefreshTokenCommandHandler(
         await refreshTokens.AddAsync(
             RefreshToken.Issue(user.Id, tokens.HashRefreshToken(pair.RefreshToken), pair.RefreshExpiresAtUtc),
             cancellationToken);
-        await refreshTokens.SaveChangesAsync(cancellationToken);
+        await uow.SaveChangesAsync(cancellationToken);
 
         return new LoginResponse(
             pair.AccessToken,

@@ -1,10 +1,11 @@
 using Application.Abstractions.Messaging;
+using Modules.Alerts.Domain;
 using Modules.Alerts.Domain.Alerts;
 using SharedKernel;
 
 namespace Modules.Alerts.Application.Alerts.Acknowledge;
 
-internal sealed class AcknowledgeAlertCommandHandler(IAlertRepository alerts)
+internal sealed class AcknowledgeAlertCommandHandler(IAlertRepository alerts, IUnitOfWork uow)
     : ICommandHandler<AcknowledgeAlertCommand>
 {
     public async Task<Result> Handle(AcknowledgeAlertCommand request, CancellationToken cancellationToken)
@@ -19,7 +20,7 @@ internal sealed class AcknowledgeAlertCommandHandler(IAlertRepository alerts)
         if (ack.IsFailure) return ack;
 #pragma warning restore IDE0011 // Add braces
 
-        await alerts.SaveChangesAsync(cancellationToken);
+        await uow.SaveChangesAsync(cancellationToken);
         return Result.Success();
     }
 }

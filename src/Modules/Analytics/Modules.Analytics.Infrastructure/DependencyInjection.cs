@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Modules.Analytics.Api;
+using Modules.Analytics.Domain;
 using Modules.Analytics.Domain.Audit;
 using Modules.Analytics.Infrastructure.Api;
 using Modules.Analytics.Infrastructure.Database;
@@ -22,6 +23,7 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAnalyticsApi, AnalyticsApi>();
         return services;
     }

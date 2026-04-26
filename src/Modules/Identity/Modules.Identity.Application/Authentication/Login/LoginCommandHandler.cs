@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using Modules.Identity.Domain;
 using Modules.Identity.Domain.RefreshTokens;
 using Modules.Identity.Domain.Users;
 using SharedKernel;
@@ -8,6 +9,7 @@ namespace Modules.Identity.Application.Authentication.Login;
 internal sealed class LoginCommandHandler(
     IUserRepository users,
     IRefreshTokenRepository refreshTokens,
+    IUnitOfWork uow,
     IPasswordHasher hasher,
     IJwtTokenService tokens)
     : ICommandHandler<LoginCommand, LoginResponse>
@@ -26,8 +28,7 @@ internal sealed class LoginCommandHandler(
             cancellationToken);
 
         user.RecordLogin();
-        await users.SaveChangesAsync(cancellationToken);
-        await refreshTokens.SaveChangesAsync(cancellationToken);
+        await uow.SaveChangesAsync(cancellationToken);
 
         return new LoginResponse(
             pair.AccessToken,

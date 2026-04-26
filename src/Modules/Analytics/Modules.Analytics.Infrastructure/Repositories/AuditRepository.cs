@@ -17,8 +17,6 @@ internal sealed class AuditRepository(AnalyticsDbContext db) : IAuditRepository
 
     public Task<int> CountAsync(CancellationToken ct = default) => db.AuditEntries.CountAsync(ct);
 
-    public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
-
     public async Task AddRangeAsync(IEnumerable<AuditEntry> entries, CancellationToken ct = default) =>
         await db.AuditEntries.AddRangeAsync(entries, ct);
 }

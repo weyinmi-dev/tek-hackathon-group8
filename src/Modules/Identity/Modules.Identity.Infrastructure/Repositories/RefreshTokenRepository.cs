@@ -11,6 +11,4 @@ internal sealed class RefreshTokenRepository(IdentityDbContext db) : IRefreshTok
 
     public Task<RefreshToken?> GetByHashAsync(string tokenHash, CancellationToken ct = default) =>
         db.RefreshTokens.FirstOrDefaultAsync(t => t.TokenHash == tokenHash, ct);
-
-    public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

@@ -28,6 +28,4 @@ internal sealed class AlertRepository(AlertsDbContext db) : IAlertRepository
         await db.Alerts.AddRangeAsync(alerts, cancellationToken);
 
     public Task<int> CountAsync(CancellationToken cancellationToken = default) => db.Alerts.CountAsync(cancellationToken);
-
-    public Task SaveChangesAsync(CancellationToken cancellationToken = default) => db.SaveChangesAsync(cancellationToken);
 }

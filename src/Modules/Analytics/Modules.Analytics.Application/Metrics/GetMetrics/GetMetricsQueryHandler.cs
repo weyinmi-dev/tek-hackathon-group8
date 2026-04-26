@@ -1,3 +1,4 @@
+using System.Globalization;
 using Application.Abstractions.Messaging;
 using Modules.Alerts.Api;
 using Modules.Network.Api;
@@ -39,17 +40,35 @@ internal sealed class GetMetricsQueryHandler(
         {
             new("Network Uptime",        "99.847", "%",       "-0.03",                                "down", "24h rolling"),
             new("Avg Latency",           "42",     "ms",      "+8",                                   "down", "p95 across LAG metro"),
-            new("Active Incidents",      active.Count.ToString(), "",  $"+{crit}", "down", $"{crit} critical, {warn} warn, {info} info"),
+            new("Active Incidents",      active.Count.ToString(CultureInfo.InvariantCulture), "",  $"+{crit}", "down", $"{crit} critical, {warn} warn, {info} info"),
             new("Towers Online",         $"{onlineTowers:N0}", $"/ {totalTowers:N0}", "-3",          "down", "Lagos metro"),
             new("Subscribers Affected",  $"{affectedSubs / 1000.0:F1}", "K", "+14.2K",               "down", "last 60 min"),
             new("Copilot Queries",       "2,841",  "",        "+412",                                 "up",   "today"),
         };
 
         IReadOnlyList<RegionHealthMetric> regions = regionHealth
-            .Select(r => new RegionHealthMetric(
-                r.Region,
-                r.AvgSignalPct,
-                r.AvgSignalPct > 75 ? "ok" : r.AvgSignalPct > 50 ? "warn" : "crit"))
+            .Select(r =>
+            {
+                // Extracted nested ternary into explicit logic to satisfy S3358.
+                string tone;
+                if (r.AvgSignalPct > 75)
+                {
+                    tone = "ok";
+                }
+                else if (r.AvgSignalPct > 50)
+                {
+                    tone = "warn";
+                }
+                else
+                {
+                    tone = "crit";
+                }
+
+                return new RegionHealthMetric(
+                    Name: r.Region,
+                    AvgSignal: r.AvgSignalPct,
+                    Tone: tone);
+            })
             .ToList();
 
         IReadOnlyList<IncidentTypeBreakdown> types =

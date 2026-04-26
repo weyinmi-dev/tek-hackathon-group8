@@ -33,5 +33,4 @@ public interface IChatLogRepository
 {
     Task AddAsync(ChatLog log, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
-    Task SaveChangesAsync(CancellationToken cancellationToken = default);
 }

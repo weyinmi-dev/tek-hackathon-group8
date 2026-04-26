@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Modules.Identity.Application.Authentication;
 using Modules.Identity.Domain.Users;
 using Modules.Identity.Infrastructure.Database;
+using SharedKernel;
 
 namespace Modules.Identity.Infrastructure.Seed;
 
@@ -14,7 +15,11 @@ public static class IdentitySeeder
 #pragma warning restore IDE0011 // Add braces
 
         // Default password for every demo user. Override per-user in real deployments.
+#pragma warning disable S2068 // Credentials should not be hard-coded
+
         const string DemoPassword = "Telco!2025";
+#pragma warning restore S2068 // Credentials should not be hard-coded
+
         string hash = hasher.Hash(DemoPassword);
 
         var seeds = new (string email, string name, string handle, string role, string team, string region)[]
@@ -31,7 +36,7 @@ public static class IdentitySeeder
 
         foreach ((string email, string name, string handle, string role, string team, string region) in seeds)
         {
-            var created = User.Create(email, hash, name, handle, role, team, region);
+            Result<User> created = User.Create(email, hash, name, handle, role, team, region);
 #pragma warning disable IDE0011 // Add braces
             if (created.IsSuccess) await db.Users.AddAsync(created.Value, ct);
 #pragma warning restore IDE0011 // Add braces
