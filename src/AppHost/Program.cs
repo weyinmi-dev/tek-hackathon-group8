@@ -1,7 +1,9 @@
 // TelcoPilot Aspire AppHost — local development orchestration.
 //
-// In local dev:  dotnet run --project src/AppHost   (boots Postgres, Redis, Web.Api together)
+// In local dev:  dotnet run --project src/AppHost   (boots Postgres, Redis, Web.Api, Next.js frontend)
 // In production: docker-compose up                  (nginx + frontend + backend + postgres + redis)
+//
+// First-time frontend setup (one-time): cd frontend && npm install --legacy-peer-deps
 //
 // Secrets (Azure OpenAI) come from .NET user-secrets keyed off this AppHost project's UserSecretsId.
 // Set them with:
@@ -17,7 +19,7 @@ IResourceBuilder<ParameterResource> postgresPwd =
     builder.AddParameter("postgres-password", secret: true);
 
 IResourceBuilder<PostgresServerResource> postgres = builder
-    .AddPostgres("postgres", password: postgresPwd, port: 5432)
+    .AddPostgres("postgres", password: postgresPwd)
     .WithDataVolume("telcopilot-pg-data")
     .WithLifetime(ContainerLifetime.Persistent);
 
@@ -27,7 +29,7 @@ IResourceBuilder<RedisResource> redis = builder
     .AddRedis("redis", port: 6379)
     .WithLifetime(ContainerLifetime.Persistent);
 
-builder.AddProject<Projects.Web_Api>("web-api")
+IResourceBuilder<ProjectResource> webApi = builder.AddProject<Projects.Web_Api>("web-api")
     .WithReference(db)
     .WaitFor(db)
     .WithReference(redis)
@@ -40,5 +42,14 @@ builder.AddProject<Projects.Web_Api>("web-api")
     .WithEnvironment("Ai__AzureOpenAi__ApiKey",      builder.Configuration["Ai:AzureOpenAi:ApiKey"]      ?? "")
     .WithEnvironment("Ai__AzureOpenAi__Deployment",  builder.Configuration["Ai:AzureOpenAi:Deployment"]  ?? "gpt-4o-mini")
     .WithEnvironment("Jwt__Secret",                  builder.Configuration["Jwt:Secret"]                  ?? "dev-secret-replace-in-production-please-32chars-min");
+
+// Next.js frontend. next.config.mjs reads BACKEND_INTERNAL_URL to rewrite /api/* to the API,
+// so the browser hits a single origin and we don't need nginx in dev.
+builder.AddNpmApp("frontend", "../../frontend", "dev")
+    .WithReference(webApi)
+    .WaitFor(webApi)
+    .WithHttpEndpoint(env: "PORT")
+    .WithEnvironment("BACKEND_INTERNAL_URL", webApi.GetEndpoint("http"))
+    .WithExternalHttpEndpoints();
 
 await builder.Build().RunAsync();
