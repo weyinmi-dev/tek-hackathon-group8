@@ -28,41 +28,44 @@ internal sealed class SemanticKernelOrchestrator(
     ILogger<SemanticKernelOrchestrator> logger)
     : ICopilotOrchestrator
 {
-    private const string SystemPrompt = """
+
+    public async Task<CopilotAnswer> AskAsync(string query, string userRole, CancellationToken cancellationToken = default)
+    {
+        var trace = new List<SkillTraceEntry>();
+        var sw = Stopwatch.StartNew();
+
+        string systemPrompt = $"""
         You are TelcoPilot, an AI assistant embedded in MTN Nigeria Network Operations Center
-        for a Lagos, Nigeria metro carrier. The user is an on-call engineer, manager, or executive.
+        for a Lagos, Nigeria metro carrier. The user is an {userRole} (engineer, manager, or admin).
+
+        Your role is to provide accurate, actionable insights based on network data.
 
         You have three plugins:
           - DiagnosticsSkill : tower & region metrics (signal, load, status, issue)
           - OutageSkill      : active and recent incidents (severity, root-cause, subs affected)
           - RecommendationSkill : operator runbook playbooks (3 concrete actions per cause class)
 
-        Use them as needed before answering. Always cite specific tower IDs (e.g. TWR-LEK-003)
-        and incident IDs (e.g. INC-2841) when the data supports it.
+        Instructions:
+        1. Analyze the query using available plugins.
+        2. Provide a structured response.
+        3. Cite specific tower IDs (e.g. TWR-LEK-003) and incident IDs (e.g. INC-2841).
+        4. Keep response under 200 words.
 
-        Format your reply in this EXACT structure (plain text, no markdown headers):
-
+        Response Format:
         ROOT CAUSE
-        <2-3 sentences identifying the most likely cause, citing specific tower IDs and metrics>
+        <2-3 sentences identifying the most likely cause, citing specific data>
 
         AFFECTED
         <bullet list of 2-4 items: regions, tower IDs, subscriber counts>
 
         RECOMMENDED ACTIONS
-        <numbered list of 3 concrete actions an engineer can take now>
+        <numbered list of 3 concrete actions>
 
         CONFIDENCE
         <single number 0-100 followed by " %" and a one-line justification>
-
-        Keep total reply under 200 words. Be specific.
         """;
 
-    public async Task<CopilotAnswer> AskAsync(string query, CancellationToken cancellationToken = default)
-    {
-        var trace = new List<SkillTraceEntry>();
-        var sw = Stopwatch.StartNew();
-
-        ChatHistory history = new(SystemPrompt);
+        ChatHistory history = new(systemPrompt);
         history.AddUserMessage(query);
 
         OpenAIPromptExecutionSettings settings = new()

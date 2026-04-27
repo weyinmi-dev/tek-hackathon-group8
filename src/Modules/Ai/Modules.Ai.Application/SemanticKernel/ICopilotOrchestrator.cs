@@ -10,5 +10,5 @@ namespace Modules.Ai.Application.SemanticKernel;
 /// </summary>
 public interface ICopilotOrchestrator
 {
-    Task<CopilotAnswer> AskAsync(string query, CancellationToken cancellationToken = default);
+    Task<CopilotAnswer> AskAsync(string query, string userRole, CancellationToken cancellationToken = default);
 }
