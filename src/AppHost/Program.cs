@@ -16,10 +16,13 @@
 IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(args);
 
 
+IResourceBuilder<ParameterResource> pgPassword =
+    builder.AddParameter("postgres-password", "postgres123", secret: true);
+
 IResourceBuilder<PostgresServerResource> postgres = builder
-    .AddPostgres("postgres", port: 5723)
-    .WithDataVolume("telcopilot-pg-data")
-    .WithPgWeb();
+    .AddPostgres("postgres", password: pgPassword, port: 5723)
+    .WithDataVolume()
+    .WithPgAdmin();
 
 IResourceBuilder<PostgresDatabaseResource> db = postgres.AddDatabase("telcopilot");
 
@@ -28,7 +31,7 @@ IResourceBuilder<RedisResource> redis = builder
     .WithLifetime(ContainerLifetime.Persistent);
 
 IResourceBuilder<ProjectResource> webApi = builder.AddProject<Projects.Web_Api>("web-api")
-    .WithReference(db, "Database")
+    .WithReference(db)
     .WaitFor(db)
     .WithReference(redis, "Cache")
     .WaitFor(redis)

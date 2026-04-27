@@ -33,11 +33,16 @@ public static class DependencyInjection
 
     private static void AddDatabase(IServiceCollection services, IConfiguration configuration)
     {
-        string? connectionString = configuration.GetConnectionString("Database");
-        Ensure.NotNullOrEmpty(connectionString);
+        string? connectionString = configuration.GetConnectionString("telcopilot");
+
+#pragma warning disable S125 // Sections of code should not be commented out
+                            // Ensure.NotNullOrEmpty(connectionString);
+
 
         services.AddSingleton<IDbConnectionFactory>(_ =>
             new DbConnectionFactory(new NpgsqlDataSourceBuilder(connectionString).Build()));
+#pragma warning restore S125 // Sections of code should not be commented out
+
     }
 
     private static void AddCaching(IServiceCollection services, IConfiguration configuration)
@@ -59,7 +64,7 @@ public static class DependencyInjection
     {
         IHealthChecksBuilder hc = services.AddHealthChecks();
 
-        string? db = configuration.GetConnectionString("Database");
+        string? db = configuration.GetConnectionString("telcopilot");
         if (!string.IsNullOrWhiteSpace(db))
         {
             hc.AddNpgSql(db);

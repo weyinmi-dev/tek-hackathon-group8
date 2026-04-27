@@ -18,7 +18,7 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddIdentityInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        string? connectionString = configuration.GetConnectionString("Database");
+        string? connectionString = configuration.GetConnectionString("telcopilot");
         Ensure.NotNullOrEmpty(connectionString);
 
         services.AddDbContext<IdentityDbContext>(opts => opts
