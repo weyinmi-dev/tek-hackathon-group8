@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function TopBar({ title, sub, right }: { title: string; sub?: string; right?: ReactNode }) {
   const [now, setNow] = useState<Date | null>(null);
@@ -23,6 +24,7 @@ export function TopBar({ title, sub, right }: { title: string; sub?: string; rig
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         {right}
+        <ThemeToggle />
         <div className="mono" style={{
           display: "flex", alignItems: "center", gap: 8,
           fontSize: 11, color: "var(--ink-2)",

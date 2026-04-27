@@ -6,6 +6,15 @@ export const metadata: Metadata = {
   description: "Natural language network intelligence for the Lagos metro NOC.",
 };
 
+// Runs before hydration so a stored "light" preference is applied without a dark-mode flash.
+// :root in globals.css already supplies dark values, so absence of a class === dark.
+const themeBootstrap = `
+try {
+  var t = localStorage.getItem('tp-theme');
+  if (t === 'light' || t === 'dark') document.body.className = 'theme-' + t;
+} catch (e) {}
+`;
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
@@ -17,7 +26,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           rel="stylesheet"
         />
       </head>
-      <body className="theme-dark">{children}</body>
+      <body suppressHydrationWarning>
+        <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
+        {children}
+      </body>
     </html>
   );
 }
