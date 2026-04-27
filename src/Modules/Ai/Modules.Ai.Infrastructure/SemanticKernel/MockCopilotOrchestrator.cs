@@ -15,7 +15,7 @@ namespace Modules.Ai.Infrastructure.SemanticKernel;
 /// </summary>
 internal sealed class MockCopilotOrchestrator(INetworkApi network, IAlertsApi alerts) : ICopilotOrchestrator
 {
-    public async Task<CopilotAnswer> AskAsync(string query, CancellationToken cancellationToken = default)
+    public async Task<CopilotAnswer> AskAsync(string query, string userRole, CancellationToken cancellationToken = default)
     {
         var sw = Stopwatch.StartNew();
         var trace = new List<SkillTraceEntry>();
