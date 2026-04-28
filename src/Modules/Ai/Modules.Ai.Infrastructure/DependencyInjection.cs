@@ -38,6 +38,12 @@ public static class DependencyInjection
 
         if (useAzure)
         {
+            // SK's AzureOpenAIClient appends "/openai/deployments/{deployment}/chat/completions"
+            // to whatever endpoint we pass, so it must be the resource root. Operators commonly
+            // paste a Foundry-style URL ending in "/api/projects/<p>/openai/v1/responses"; strip
+            // it back to "<scheme>://<host>/" so request URIs come out correct.
+            string normalizedEndpoint = NormalizeAzureOpenAiEndpoint(ai.AzureOpenAi.Endpoint);
+
             services.AddScoped<DiagnosticsSkill>();
             services.AddScoped<OutageSkill>();
             services.AddScoped<RecommendationSkill>();
@@ -47,7 +53,7 @@ public static class DependencyInjection
                 IKernelBuilder kb = Kernel.CreateBuilder();
                 kb.AddAzureOpenAIChatCompletion(
                     deploymentName: ai.AzureOpenAi.Deployment,
-                    endpoint: ai.AzureOpenAi.Endpoint,
+                    endpoint: normalizedEndpoint,
                     apiKey: ai.AzureOpenAi.ApiKey);
 
                 Kernel k = kb.Build();
@@ -65,5 +71,19 @@ public static class DependencyInjection
         }
 
         return services;
+    }
+
+    internal static string NormalizeAzureOpenAiEndpoint(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw) || !Uri.TryCreate(raw.Trim(), UriKind.Absolute, out Uri? uri))
+        {
+            return raw;
+        }
+
+        UriBuilder rooted = new(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port)
+        {
+            Path = "/",
+        };
+        return rooted.Uri.ToString();
     }
 }

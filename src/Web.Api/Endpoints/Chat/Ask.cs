@@ -2,7 +2,6 @@ using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Modules.Ai.Application.Copilot.AskCopilot;
-using Modules.Identity.Application.Authorization;
 using SharedKernel;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
@@ -13,7 +12,9 @@ public sealed class Ask : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("chat", [Authorize(Policy = Policies.RequireEngineer)]
+        // Copilot is open to every authenticated user — viewers, engineers, managers, admins.
+        // The handler still receives the caller's role so responses can be tailored downstream.
+        app.MapPost("chat", [Authorize]
             async (Request request, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
         {
             string trimmedQuery = request.Query.Trim();

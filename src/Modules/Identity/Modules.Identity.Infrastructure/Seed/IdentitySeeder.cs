@@ -10,6 +10,18 @@ public static class IdentitySeeder
 {
     public static async Task SeedAsync(IdentityDbContext db, IPasswordHasher hasher, CancellationToken ct = default)
     {
+        // One-shot heal for rows persisted under the previous User.Create implementation,
+        // which stored roles as uppercase ("ENGINEER", "MANAGER", ...). ClaimsPrincipal.IsInRole
+        // is case-sensitive on claim values, so those rows fail every role-based policy until
+        // normalized. Cheap, idempotent, and safe to run on every startup.
+        // Both ToLower() calls live inside EF expression trees and translate to SQL LOWER(),
+        // so the culture/case analyzers don't apply here.
+#pragma warning disable CA1304, CA1311, CA1862
+        await db.Users
+            .Where(u => u.Role != u.Role.ToLower())
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Role, u => u.Role.ToLower()), ct);
+#pragma warning restore CA1304, CA1311, CA1862
+
 #pragma warning disable IDE0011 // Add braces
         if (await db.Users.AnyAsync(ct)) return;
 #pragma warning restore IDE0011 // Add braces

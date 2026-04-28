@@ -53,8 +53,11 @@ public sealed class User : Entity
 
         if (!Roles.IsValid(role)) return Result.Failure<User>(UserErrors.RoleInvalid);
 
-#pragma warning disable CA1308 // Normalize strings to uppercase
-        var user = new User(Guid.NewGuid(), email.Trim().ToLowerInvariant(), passwordHash, fullName, handle, role.ToUpperInvariant(), team, region);
+        // Role values are canonical lowercase (see Roles class). ClaimsPrincipal.IsInRole
+        // uses case-sensitive ordinal comparison on claim values, so storing "ENGINEER" while
+        // policies require "engineer" silently breaks every role-based [Authorize] policy.
+#pragma warning disable CA1308 // Normalize strings to uppercase — intentionally lowercase
+        var user = new User(Guid.NewGuid(), email.Trim().ToLowerInvariant(), passwordHash, fullName, handle, role.Trim().ToLowerInvariant(), team, region);
 #pragma warning restore CA1308 // Normalize strings to uppercase
         user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.Role));
         return user;

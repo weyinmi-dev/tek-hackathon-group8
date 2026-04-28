@@ -68,11 +68,15 @@ internal sealed class SemanticKernelOrchestrator(
         ChatHistory history = new(systemPrompt);
         history.AddUserMessage(query);
 
+        // NOTE: do not set MaxTokens here. SK 1.74's OpenAIPromptExecutionSettings.MaxTokens
+        // binds to ChatCompletionOptions.MaxTokens (the obsolete property in OpenAI SDK 2.x),
+        // which serializes on the wire as "max_tokens". GPT-5 family reasoning models reject
+        // that param and require "max_completion_tokens", so setting it produces a 400.
+        // The system prompt already caps the answer at ~200 words.
         OpenAIPromptExecutionSettings settings = new()
         {
             FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
             Temperature = 0.2,
-            MaxTokens = 600,
         };
 
         try
@@ -108,8 +112,36 @@ internal sealed class SemanticKernelOrchestrator(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Azure OpenAI call failed; falling back to mock answer.");
-            return MockAnswer(query, trace, "azure-openai-fallback");
+            logger.LogError(ex, "Azure OpenAI call failed; surfacing diagnostic answer.");
+            trace.Add(new SkillTraceEntry("LlmComposer", "compose", 0, "error"));
+
+            string detail = $"{ex.GetType().Name}: {ex.Message}";
+            if (ex.InnerException is not null)
+            {
+                detail += $"\n  → {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
+            }
+
+            string answer = $"""
+            ROOT CAUSE
+            The Azure OpenAI call failed. The copilot is wired up but the upstream model call threw before a response was produced.
+
+            AFFECTED
+            • Live answers are unavailable until the upstream call succeeds.
+            • Skills, DB, and auth all reached this point fine — the failure is in the chat-completion request.
+
+            RECOMMENDED ACTIONS
+            1. Read the exception below and address its root cause.
+            2. Confirm Ai:AzureOpenAi:Endpoint, ApiKey, and Deployment are set in user-secrets.
+            3. Verify the deployment '{nameof(SemanticKernelOrchestrator)}' is configured to call exists in the Azure resource.
+
+            EXCEPTION
+            {detail}
+
+            CONFIDENCE
+            0 % — diagnostic, not a model answer.
+            """;
+
+            return new CopilotAnswer(answer, 0.0, trace, AttachmentSelector.Select(query), "azure-openai-error");
         }
     }
 
