@@ -169,6 +169,28 @@ echo "AZURE_OPENAI_ENDPOINT=https://<your>.openai.azure.com/" >> .env
 echo "AZURE_OPENAI_API_KEY=<key>"                         >> .env
 docker compose up -d --force-recreate backend
 ```
+### AI Output and Observability
+
+The Copilot returns structured responses including:
+
+- Answer → generated insight  
+- Confidence score → reliability of the response  
+- Skill trace → sequence of executed skills  
+- Provider → AI engine used  
+
+All interactions are logged and persisted for audit and analytics purposes.
+
+
+---
+###  context awareness 
+
+Each query includes user identity and role, enabling the system to generate context-aware responses tailored to different operational roles (e.g., Engineer vs Manager).
+
+
+---
+
+
+
 
 ---
 
