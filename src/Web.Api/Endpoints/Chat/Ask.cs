@@ -14,6 +14,7 @@ public sealed class Ask : IEndpoint
     {
         // Copilot is open to every authenticated user — viewers, engineers, managers, admins.
         // The handler still receives the caller's role so responses can be tailored downstream.
+        // Conversation persistence: pass conversationId to continue a session, omit to start one.
         app.MapPost("chat", [Authorize]
             async (Request request, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
         {
@@ -30,12 +31,18 @@ public sealed class Ask : IEndpoint
 
             string handle = user.FindFirstValue("handle") ?? "anonymous";
             string role   = user.FindFirstValue(ClaimTypes.Role) ?? "viewer";
+            Guid userId   = ParseUserId(user);
 
-            Result<CopilotAnswer> result = await sender.Send(new AskCopilotCommand(trimmedQuery, handle, role), ct);
+            Result<CopilotAnswer> result = await sender.Send(
+                new AskCopilotCommand(trimmedQuery, userId, handle, role, request.ConversationId), ct);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .WithTags(Tags.Chat);
     }
 
-    public sealed record Request(string Query);
+    private static Guid ParseUserId(ClaimsPrincipal user) =>
+        Guid.TryParse(user.FindFirstValue(ClaimTypes.NameIdentifier)
+                     ?? user.FindFirstValue("sub"), out Guid id) ? id : Guid.Empty;
+
+    public sealed record Request(string Query, Guid? ConversationId);
 }

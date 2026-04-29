@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { StoreProvider } from "@/lib/stores/StoreProvider";
 
 export const metadata: Metadata = {
   title: "TelcoPilot — AI-Native Telco Operations",
@@ -28,7 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: themeBootstrap }} />
-        {children}
+        <StoreProvider>{children}</StoreProvider>
       </body>
     </html>
   );

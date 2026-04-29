@@ -2,25 +2,32 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { observer } from "mobx-react-lite";
 import { Sidebar } from "@/components/Sidebar";
-import { useAuth } from "@/lib/auth";
+import { useAuthStore } from "@/lib/stores/StoreProvider";
 
-export default function AuthedLayout({ children }: { children: React.ReactNode }) {
+/**
+ * Auth gate for every /(authed)/* route. Observes the AuthStore so that:
+ *   - on first load, we wait for hydration before deciding to redirect
+ *   - on logout (this tab OR another), we bounce to /login automatically
+ *   - cross-tab login is reflected immediately
+ */
+export default observer(function AuthedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const { user, ready } = useAuth();
+  const auth = useAuthStore();
 
   useEffect(() => {
-    if (ready && !user) router.push("/login");
-  }, [ready, user, router]);
+    if (auth.hasHydrated && !auth.isAuthenticated) router.push("/login");
+  }, [auth.hasHydrated, auth.isAuthenticated, router]);
 
-  if (!ready) {
+  if (!auth.hasHydrated) {
     return (
       <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: 12 }}>
         ⌁ initializing session…
       </div>
     );
   }
-  if (!user) return null;
+  if (!auth.isAuthenticated) return null;
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "240px 1fr", minHeight: "100vh" }}>
@@ -30,4 +37,4 @@ export default function AuthedLayout({ children }: { children: React.ReactNode }
       </main>
     </div>
   );
-}
+});

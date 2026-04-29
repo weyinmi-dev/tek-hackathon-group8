@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { observer } from "mobx-react-lite";
+import { useChatStore } from "@/lib/stores/StoreProvider";
+import type { ChatMessage } from "@/lib/stores/ChatStore";
+import type { SkillTraceEntry } from "@/lib/types";
 import { Btn } from "@/components/UI";
-import type { CopilotAnswer, SkillTraceEntry } from "@/lib/types";
 
 const SUGGESTED = [
   "Why is Lagos West slow?",
@@ -13,51 +15,25 @@ const SUGGESTED = [
   "Compare Lekki vs Victoria Island latency",
 ];
 
-type Msg =
-  | { role: "system"; content: string }
-  | { role: "user"; content: string }
-  | { role: "assistant"; answer: CopilotAnswer; query: string };
-
-export function Copilot({ embedded = false }: { embedded?: boolean }) {
-  const [messages, setMessages] = useState<Msg[]>([
-    { role: "system", content: "TelcoPilot · v1.4 · Powered by Azure OpenAI + Semantic Kernel · Context: Lagos metro NOC" },
-  ]);
+/**
+ * Copilot is now a thin observer over ChatStore — message list, send, and
+ * trace state all live in the store. That's what makes refresh + session
+ * resume "just work": the store hydrates from localStorage on boot, refetches
+ * the active conversation from the server, and this component re-renders.
+ */
+export const Copilot = observer(function Copilot({ embedded = false }: { embedded?: boolean }) {
+  const chat = useChatStore();
   const [input, setInput] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [trace, setTrace] = useState<SkillTraceEntry[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages, trace, busy]);
+  }, [chat.messages, chat.pendingTrace, chat.sending]);
 
   async function ask(q: string) {
-    if (!q.trim() || busy) return;
-    setInput(""); setBusy(true);
-    setMessages(m => [...m, { role: "user", content: q }]);
-
-    // Animated skill trace — pre-populate so the agent panel renders immediately
-    const stages: SkillTraceEntry[] = [
-      { skill: "IntentParser", function: "parseQuery", durationMs: 0, status: "running" },
-    ];
-    setTrace(stages);
-
-    try {
-      const a = await api.chat(q);
-      // Replace synthetic trace with the backend's real trace
-      setTrace(a.skillTrace);
-      // Brief pause so users see the trace before the answer renders
-      await new Promise(r => setTimeout(r, 400));
-      setMessages(m => [...m, { role: "assistant", answer: a, query: q }]);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Copilot is unavailable.";
-      setMessages(m => [...m, { role: "assistant", query: q, answer: {
-        answer: `ROOT CAUSE\nCopilot service unavailable.\n\nAFFECTED\n• Backend chat endpoint returned an error.\n\nRECOMMENDED ACTIONS\n1. Verify the backend container is healthy (\`docker compose ps\`)\n2. Check Ai:* config — Mock provider works without Azure OpenAI keys\n3. Inspect logs: \`docker compose logs backend\`\n\nCONFIDENCE\n10 % — ${msg}`,
-        confidence: 0.1, skillTrace: [], attachments: [], provider: "error"
-      } }]);
-    } finally {
-      setBusy(false); setTrace([]);
-    }
+    if (!q.trim() || chat.sending) return;
+    setInput("");
+    await chat.ask(q);
   }
 
   return (
@@ -67,11 +43,11 @@ export function Copilot({ embedded = false }: { embedded?: boolean }) {
         padding: embedded ? 14 : "22px 22px 14px",
         display: "flex", flexDirection: "column", gap: 16,
       }}>
-        {messages.map((m, i) => <Message key={i} m={m} />)}
-        {busy && <SkillTrace steps={trace} />}
+        {chat.messages.map(m => <Message key={m.id} m={m} />)}
+        {chat.sending && <SkillTrace steps={chat.pendingTrace} />}
       </div>
 
-      {messages.length <= 1 && !busy && (
+      {chat.messages.length <= 1 && !chat.sending && (
         <div style={{ padding: embedded ? "0 14px 10px" : "0 22px 10px", display: "flex", flexWrap: "wrap", gap: 6 }}>
           {SUGGESTED.map(s => (
             <button key={s} onClick={() => ask(s)} style={{
@@ -95,37 +71,39 @@ export function Copilot({ embedded = false }: { embedded?: boolean }) {
             onChange={e => setInput(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") ask(input); }}
             placeholder='Ask: "why is Lagos West slow?"'
-            disabled={busy}
+            disabled={chat.sending}
             style={{
               flex: 1, border: 0, background: "transparent", outline: "none",
               fontSize: 13.5, color: "var(--ink)", fontFamily: "var(--sans)",
             }}
           />
           <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>⏎</span>
-          <Btn primary small onClick={() => ask(input)} disabled={busy}>{busy ? "Thinking…" : "Ask"}</Btn>
+          <Btn primary small onClick={() => ask(input)} disabled={chat.sending}>{chat.sending ? "Thinking…" : "Ask"}</Btn>
         </div>
         <div className="mono" style={{ fontSize: 9.5, color: "var(--ink-3)", marginTop: 8, letterSpacing: ".08em" }}>
-          QUERIES LOGGED · MODEL: AZURE OPENAI (or MOCK fallback)
+          {chat.activeConversation
+            ? `SESSION · ${chat.activeConversation.title} · ${chat.activeConversation.messageCount} TURNS`
+            : "NEW SESSION · MODEL: AZURE OPENAI (or MOCK fallback)"}
         </div>
       </div>
     </div>
   );
-}
+});
 
-function Message({ m }: { m: Msg }) {
+const Message = observer(function Message({ m }: { m: ChatMessage }) {
   if (m.role === "system") {
     return <div className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)", padding: "0 4px", letterSpacing: ".04em", animation: "fadein .3s" }}>⌁ {m.content}</div>;
   }
   if (m.role === "user") {
     return (
-      <div style={{ alignSelf: "flex-end", maxWidth: "72%", animation: "fadein .25s" }}>
+      <div style={{ alignSelf: "flex-end", maxWidth: "72%", animation: "fadein .25s", opacity: m.pending ? 0.65 : 1 }}>
         <div style={{
           padding: "10px 14px", borderRadius: "10px 10px 2px 10px",
           background: "var(--bg-3)", border: "1px solid var(--line-2)",
           fontSize: 13.5, lineHeight: 1.5,
         }}>{m.content}</div>
-        <div className="mono uppr" style={{ fontSize: 9, color: "var(--ink-3)", marginTop: 4, textAlign: "right", letterSpacing: ".10em" }}>
-          YOU · {new Date().toTimeString().slice(0, 5)}
+        <div className="mono uppr" style={{ fontSize: 9, color: m.error ? "var(--crit)" : "var(--ink-3)", marginTop: 4, textAlign: "right", letterSpacing: ".10em" }}>
+          {m.error ? `⚠ ${m.error}` : `YOU · ${formatTime(m.createdAtUtc)}${m.pending ? " · sending…" : ""}`}
         </div>
       </div>
     );
@@ -137,7 +115,7 @@ function Message({ m }: { m: Msg }) {
         display: "flex", alignItems: "center", gap: 6,
       }}>
         <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--accent)", boxShadow: "0 0 8px var(--accent)" }} />
-        TELCOPILOT · ANSWER · {m.answer.provider.toUpperCase()}
+        TELCOPILOT · ANSWER · {(m.provider ?? "azure-openai").toUpperCase()}
       </div>
       <div style={{
         padding: "14px 16px", borderRadius: "2px 10px 10px 10px",
@@ -145,10 +123,15 @@ function Message({ m }: { m: Msg }) {
         borderLeft: "2px solid var(--accent)",
         fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap",
       }}>
-        <FormattedAnswer text={m.answer.answer} />
+        <FormattedAnswer text={m.content} />
       </div>
     </div>
   );
+});
+
+function formatTime(iso: string): string {
+  try { return new Date(iso).toTimeString().slice(0, 5); }
+  catch { return ""; }
 }
 
 function FormattedAnswer({ text }: { text: string }) {
