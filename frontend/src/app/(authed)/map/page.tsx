@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { NetworkMap } from "@/components/NetworkMap";
 import { Bar, Btn, Card, Pill, Section } from "@/components/UI";
@@ -8,8 +9,10 @@ import { api } from "@/lib/api";
 import type { MapResponse, Tower } from "@/lib/types";
 
 export default function MapPage() {
+  const router = useRouter();
   const [data, setData] = useState<MapResponse | null>(null);
   const [sel, setSel] = useState<Tower | null>(null);
+  const [dispatched, setDispatched] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -20,6 +23,8 @@ export default function MapPage() {
     });
     return () => { alive = false; };
   }, []);
+
+  useEffect(() => { setDispatched(null); }, [sel?.id]);
 
   return (
     <>
@@ -54,9 +59,15 @@ export default function MapPage() {
                 <Metric label="LOAD" v={sel.load} unit="%" tone={sel.load > 85 ? "crit" : sel.load > 70 ? "warn" : "ok"} />
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-                <Btn primary small>Diagnose</Btn>
-                <Btn small>Dispatch</Btn>
-                <Btn ghost small>History</Btn>
+                <Btn primary small onClick={() =>
+                  router.push(`/copilot?q=${encodeURIComponent(`Diagnose tower ${sel.id} in ${sel.region}`)}`)
+                }>Diagnose</Btn>
+                <Btn small
+                  onClick={() => setDispatched(sel.id)}
+                  disabled={dispatched === sel.id}
+                  style={dispatched === sel.id ? { color: "var(--ok)" } : {}}
+                >{dispatched === sel.id ? "Dispatched ✓" : "Dispatch"}</Btn>
+                <Btn ghost small onClick={() => router.push("/alerts")}>History</Btn>
               </div>
             </Card>
           )}
@@ -80,6 +91,32 @@ export default function MapPage() {
                   </div>
                 );
               })}
+            </Card>
+          </Section>
+
+          <Section label="BEST SIGNAL ZONES">
+            <Card pad={0}>
+              {[...(data?.regions ?? [])]
+                .sort((a, b) => b.avgSignal - a.avgSignal)
+                .slice(0, 3)
+                .map((r, i) => {
+                  const tone = r.avgSignal >= 80 ? "ok" : r.avgSignal >= 55 ? "warn" : "crit";
+                  return (
+                    <div key={r.name} style={{
+                      padding: "10px 14px",
+                      borderBottom: i < 2 ? "1px solid var(--line)" : 0,
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                    }}>
+                      <div>
+                        <div style={{ fontSize: 12.5 }}>{r.name}</div>
+                        <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2 }}>
+                          {r.towers} towers · {r.critical + r.warn === 0 ? "all ok" : `${r.critical + r.warn} degraded`}
+                        </div>
+                      </div>
+                      <Pill tone={tone} dot>{r.avgSignal}%</Pill>
+                    </div>
+                  );
+                })}
             </Card>
           </Section>
         </div>
