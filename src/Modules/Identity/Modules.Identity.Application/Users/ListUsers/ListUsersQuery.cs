@@ -12,4 +12,7 @@ public sealed record UserListItem(
     string Role,
     string Team,
     string Region,
+    bool IsActive,
+    DateTime CreatedAtUtc,
+    DateTime? UpdatedAtUtc,
     DateTime? LastLoginAtUtc);

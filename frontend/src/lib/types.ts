@@ -112,5 +112,71 @@ export type UserListItem = {
   role: string;
   team: string;
   region: string;
+  isActive: boolean;
+  createdAtUtc: string;
+  updatedAtUtc: string | null;
   lastLoginAtUtc: string | null;
+};
+
+export type DocumentSource =
+  | "LocalUpload"
+  | "GoogleDrive"
+  | "OneDrive"
+  | "SharePoint"
+  | "AzureBlob";
+
+export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed";
+
+export type DocumentListItem = {
+  id: string;
+  title: string;
+  fileName: string;
+  sizeBytes: number;
+  category: string;
+  region: string;
+  tags: string;
+  source: DocumentSource;
+  status: IndexingStatus;
+  version: number;
+  uploadedBy: string;
+  uploadedAtUtc: string;
+  indexedAtUtc: string | null;
+  lastIndexError: string | null;
+  externalReference: string | null;
+};
+
+export type DocumentProvider = {
+  source: DocumentSource;
+  value: number;
+  isAvailable: boolean;
+};
+
+export type McpCapabilityParameter = {
+  name: string;
+  type: string;
+  description: string;
+  required: boolean;
+};
+
+export type McpCapability = {
+  name: string;
+  description: string;
+  parameters: McpCapabilityParameter[];
+};
+
+export type McpPlugin = {
+  pluginId: string;
+  displayName: string;
+  kind: "Internal" | "ExternalMcpServer" | "ExternalApi";
+  capabilities: McpCapability[];
+};
+
+export type McpInvocationResult = {
+  pluginId: string;
+  capability: string;
+  isSuccess: boolean;
+  output: unknown;
+  error: string | null;
+  durationMs: number;
+  correlationId: string | null;
 };

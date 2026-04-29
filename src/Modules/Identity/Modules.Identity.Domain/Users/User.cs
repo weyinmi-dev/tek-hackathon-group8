@@ -22,6 +22,7 @@ public sealed class User : Entity
         Role = role;
         Team = team;
         Region = region;
+        IsActive = true;
         CreatedAtUtc = DateTime.UtcNow;
     }
 
@@ -34,8 +35,10 @@ public sealed class User : Entity
     public string Role { get; private set; } = null!;
     public string Team { get; private set; } = null!;
     public string Region { get; private set; } = null!;
+    public bool IsActive { get; private set; }
     public DateTime CreatedAtUtc { get; private set; }
     public DateTime? LastLoginAtUtc { get; private set; }
+    public DateTime? UpdatedAtUtc { get; private set; }
 
     public static Result<User> Create(
         string email,
@@ -61,6 +64,53 @@ public sealed class User : Entity
 #pragma warning restore CA1308 // Normalize strings to uppercase
         user.Raise(new UserCreatedDomainEvent(user.Id, user.Email, user.Role));
         return user;
+    }
+
+    public Result UpdateProfile(string fullName, string handle, string team, string region)
+    {
+        if (string.IsNullOrWhiteSpace(fullName)) return Result.Failure(UserErrors.FullNameRequired);
+        if (string.IsNullOrWhiteSpace(handle)) return Result.Failure(UserErrors.HandleRequired);
+
+        FullName = fullName.Trim();
+        Handle = handle.Trim();
+        Team = team?.Trim() ?? string.Empty;
+        Region = region?.Trim() ?? string.Empty;
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    public Result ChangeRole(string newRole)
+    {
+        if (!Roles.IsValid(newRole)) return Result.Failure(UserErrors.RoleInvalid);
+#pragma warning disable CA1308
+        Role = newRole.Trim().ToLowerInvariant();
+#pragma warning restore CA1308
+        UpdatedAtUtc = DateTime.UtcNow;
+        return Result.Success();
+    }
+
+    public void Activate()
+    {
+        if (IsActive) return;
+        IsActive = true;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void Deactivate()
+    {
+        if (!IsActive) return;
+        IsActive = false;
+        UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    public void ResetPassword(string newPasswordHash)
+    {
+        if (string.IsNullOrWhiteSpace(newPasswordHash))
+        {
+            return;
+        }
+        PasswordHash = newPasswordHash;
+        UpdatedAtUtc = DateTime.UtcNow;
     }
 
     public void RecordLogin() => LastLoginAtUtc = DateTime.UtcNow;

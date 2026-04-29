@@ -28,6 +28,7 @@
     <ProjectReference Include="..\Modules\Network\Modules.Network.Infrastructure\Modules.Network.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Alerts\Modules.Alerts.Application\Modules.Alerts.Application.csproj" />
     <ProjectReference Include="..\Modules\Alerts\Modules.Alerts.Infrastructure\Modules.Alerts.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Analytics\Modules.Analytics.Api\Modules.Analytics.Api.csproj" />
     <ProjectReference Include="..\Modules\Analytics\Modules.Analytics.Application\Modules.Analytics.Application.csproj" />
     <ProjectReference Include="..\Modules\Analytics\Modules.Analytics.Infrastructure\Modules.Analytics.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Ai\Modules.Ai.Application\Modules.Ai.Application.csproj" />

@@ -5,21 +5,34 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
 using Npgsql;
+using Modules.Ai.Application.Mcp.Clients;
+using Modules.Ai.Application.Mcp.Contracts;
+using Modules.Ai.Application.Mcp.Registry;
 using Modules.Ai.Application.Rag;
 using Modules.Ai.Application.Rag.Chunking;
+using Modules.Ai.Application.Rag.Documents;
 using Modules.Ai.Application.Rag.Embeddings;
 using Modules.Ai.Application.Rag.Indexing;
+using Modules.Ai.Application.Rag.Ingestion;
 using Modules.Ai.Application.Rag.Retrievers;
+using Modules.Ai.Application.Rag.Storage;
 using Modules.Ai.Application.Rag.Stores;
 using Modules.Ai.Application.SemanticKernel;
 using Modules.Ai.Domain;
 using Modules.Ai.Domain.Conversations;
+using Modules.Ai.Domain.Documents;
 using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database;
+using Modules.Ai.Infrastructure.Mcp.Clients;
+using Modules.Ai.Infrastructure.Mcp.Plugins;
+using Modules.Ai.Infrastructure.Mcp.Registry;
 using Modules.Ai.Infrastructure.Rag.Chunking;
 using Modules.Ai.Infrastructure.Rag.Embeddings;
 using Modules.Ai.Infrastructure.Rag.Indexing;
+using Modules.Ai.Infrastructure.Rag.Ingestion;
 using Modules.Ai.Infrastructure.Rag.Retrievers;
+using Modules.Ai.Infrastructure.Rag.Storage;
+using Modules.Ai.Infrastructure.Rag.Storage.Providers;
 using Modules.Ai.Infrastructure.Rag.Stores;
 using Modules.Ai.Infrastructure.Repositories;
 using Modules.Ai.Infrastructure.SemanticKernel;
@@ -65,9 +78,12 @@ public static class DependencyInjection
 
         services.AddScoped<IChatLogRepository, ChatLogRepository>();
         services.AddScoped<IKnowledgeRepository, KnowledgeRepository>();
+        services.AddScoped<IManagedDocumentRepository, ManagedDocumentRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
         AddRagPipeline(services, rag, configuration);
+        AddDocumentPipeline(services, configuration);
+        AddMcpPluginLayer(services);
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
 
@@ -155,6 +171,41 @@ public static class DependencyInjection
             // just with token-overlap relevance instead of true semantic recall.
             services.AddSingleton<IEmbeddingGenerator>(_ => new HashingEmbeddingGenerator(rag.EmbeddingDimensions));
         }
+    }
+
+    private static void AddMcpPluginLayer(IServiceCollection services)
+    {
+        // Built-in plugins are scoped because they consume scoped module APIs (DbContext-bound).
+        // Add new plugins by registering an additional IMcpPlugin — they'll show up in the
+        // registry and the discovery endpoint automatically.
+        services.AddScoped<IMcpPlugin, NetworkMcpPlugin>();
+        services.AddScoped<IMcpPlugin, AlertsMcpPlugin>();
+
+        services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
+        services.AddScoped<IMcpInvoker, McpInvoker>();
+    }
+
+    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration)
+    {
+        DocumentsOptions docs = configuration.GetSection(DocumentsOptions.SectionName).Get<DocumentsOptions>() ?? new DocumentsOptions();
+        services.AddSingleton(docs);
+
+        // Local-disk provider — fully wired and the default destination for /documents uploads.
+        services.AddSingleton<IDocumentStorageProvider, LocalDocumentStorageProvider>();
+
+        // Cloud providers register as placeholders so the architecture can dispatch to them
+        // and the UI can list them as "not yet connected". Swap each one out for a live SDK
+        // adapter (Google.Apis.Drive.v3, Microsoft.Graph, Azure.Storage.Blobs, ...) when the
+        // operator is ready to enable that source — no changes required to the ingestion
+        // pipeline or the document handlers.
+        services.AddSingleton<IDocumentStorageProvider, GoogleDriveDocumentStorageProvider>();
+        services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
+        services.AddSingleton<IDocumentStorageProvider, SharePointDocumentStorageProvider>();
+        services.AddSingleton<IDocumentStorageProvider, AzureBlobDocumentStorageProvider>();
+
+        services.AddSingleton<IDocumentStorageRegistry, DocumentStorageRegistry>();
+        services.AddSingleton<IDocumentTextExtractor, PlainTextDocumentExtractor>();
+        services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
     }
 
     internal static string NormalizeAzureOpenAiEndpoint(string raw)

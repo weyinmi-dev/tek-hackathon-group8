@@ -11,7 +11,9 @@ internal sealed class ListUsersQueryHandler(IUserRepository users)
     {
         IReadOnlyList<User> all = await users.ListAsync(cancellationToken);
         IReadOnlyList<UserListItem> items = all
-            .Select(u => new UserListItem(u.Id, u.Email, u.FullName, u.Handle, u.Role, u.Team, u.Region, u.LastLoginAtUtc))
+            .Select(u => new UserListItem(
+                u.Id, u.Email, u.FullName, u.Handle, u.Role, u.Team, u.Region,
+                u.IsActive, u.CreatedAtUtc, u.UpdatedAtUtc, u.LastLoginAtUtc))
             .ToList();
         return Result.Success(items);
     }

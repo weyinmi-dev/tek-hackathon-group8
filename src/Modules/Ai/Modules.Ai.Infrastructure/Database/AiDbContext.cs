@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Modules.Ai.Application.Rag;
 using Modules.Ai.Domain.Conversations;
+using Modules.Ai.Domain.Documents;
 using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database.Configurations;
 
@@ -13,6 +14,7 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
     public DbSet<ChatLog> ChatLogs => Set<ChatLog>();
     public DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
     public DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
+    public DbSet<ManagedDocument> ManagedDocuments => Set<ManagedDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -33,5 +35,6 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
 
         modelBuilder.ApplyConfiguration(new KnowledgeDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new KnowledgeChunkConfiguration(_ragOptions));
+        modelBuilder.ApplyConfiguration(new ManagedDocumentConfiguration());
     }
 }

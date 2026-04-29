@@ -18,6 +18,7 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.Role).HasMaxLength(32).IsRequired();
         builder.Property(u => u.Team).HasMaxLength(64).IsRequired();
         builder.Property(u => u.Region).HasMaxLength(64).IsRequired();
+        builder.Property(u => u.IsActive).HasDefaultValue(true);
 
         builder.HasIndex(u => u.Email).IsUnique();
         builder.HasIndex(u => u.Handle).IsUnique();
