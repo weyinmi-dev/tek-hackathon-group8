@@ -3,23 +3,43 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
-type NavItem = { id: string; label: string; icon: string; section: string; badge?: string; adminOnly?: boolean };
+type Role = "engineer" | "manager" | "admin" | "viewer";
+type NavItem = {
+  id: string;
+  label: string;
+  icon: string;
+  section: string;
+  badge?: string;
+  // Allowed roles. Empty/undefined → visible to anyone signed in.
+  roles?: Role[];
+};
 
+// Single source of truth for which routes a role can see in the sidebar.
+// The backend still enforces RBAC on every endpoint — this just keeps the UI clean.
 const NAV: NavItem[] = [
   { id: "/dashboard", label: "Command Center", icon: "◉", section: "OPS" },
   { id: "/copilot",   label: "Copilot",        icon: "✦", section: "OPS" },
   { id: "/map",       label: "Network Map",    icon: "◎", section: "OPS" },
   { id: "/alerts",    label: "Alerts",         icon: "△", section: "OPS", badge: "14" },
   { id: "/insights",  label: "Dashboard",      icon: "▤", section: "INSIGHTS" },
-  { id: "/users",     label: "Users & Roles",  icon: "◆", section: "ADMIN" },
-  { id: "/audit",     label: "Audit Log",      icon: "≡", section: "ADMIN" },
+  { id: "/documents", label: "Knowledge",      icon: "❒", section: "OPS" },
+  { id: "/users",     label: "Users & Roles",  icon: "◆", section: "ADMIN", roles: ["admin", "manager"] },
+  { id: "/mcp",       label: "MCP Plugins",    icon: "⚙", section: "ADMIN", roles: ["admin", "manager"] },
+  { id: "/audit",     label: "Audit Log",      icon: "≡", section: "ADMIN", roles: ["admin", "manager"] },
 ];
 const SECTIONS = ["OPS", "INSIGHTS", "ADMIN"];
+
+function canSee(item: NavItem, role: Role | undefined): boolean {
+  if (!item.roles || item.roles.length === 0) return true;
+  if (!role) return false;
+  return item.roles.includes(role);
+}
 
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const role = (user?.role ?? "viewer") as Role;
 
   const initials = (user?.fullName ?? "  ").split(" ").map(s => s[0]).join("").slice(0, 2).toUpperCase();
 
@@ -45,40 +65,44 @@ export function Sidebar() {
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "10px 10px 14px" }}>
-        {SECTIONS.map(section => (
-          <div key={section} style={{ marginTop: 14 }}>
-            <div className="mono uppr" style={{ fontSize: 9.5, color: "var(--ink-3)", padding: "4px 10px 6px", letterSpacing: ".14em" }}>{section}</div>
-            {NAV.filter(n => n.section === section).map(n => {
-              const active = pathname === n.id || (n.id === "/dashboard" && pathname === "/");
-              return (
-                <button key={n.id} onClick={() => router.push(n.id)} style={{
-                  width: "100%", textAlign: "left",
-                  display: "flex", alignItems: "center", gap: 10,
-                  padding: "8px 10px", borderRadius: 6,
-                  background: active ? "var(--bg-3)" : "transparent",
-                  border: "1px solid " + (active ? "var(--line-2)" : "transparent"),
-                  color: active ? "var(--ink)" : "var(--ink-2)",
-                  cursor: "pointer", fontSize: 13, fontWeight: active ? 500 : 400,
-                  position: "relative",
-                }}>
-                  <span style={{
-                    width: 18, height: 18, display: "grid", placeItems: "center",
-                    color: active ? "var(--accent)" : "var(--ink-3)",
-                    fontFamily: "var(--mono)", fontSize: 12,
-                  }}>{n.icon}</span>
-                  <span style={{ flex: 1 }}>{n.label}</span>
-                  {n.badge && (
-                    <span className="mono" style={{
-                      fontSize: 9.5, padding: "2px 6px", borderRadius: 3,
-                      background: "var(--crit)", color: "#fff", fontWeight: 600,
-                    }}>{n.badge}</span>
-                  )}
-                  {active && <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 2, background: "var(--accent)", borderRadius: 2 }} />}
-                </button>
-              );
-            })}
-          </div>
-        ))}
+        {SECTIONS.map(section => {
+          const items = NAV.filter(n => n.section === section && canSee(n, role));
+          if (items.length === 0) return null;
+          return (
+            <div key={section} style={{ marginTop: 14 }}>
+              <div className="mono uppr" style={{ fontSize: 9.5, color: "var(--ink-3)", padding: "4px 10px 6px", letterSpacing: ".14em" }}>{section}</div>
+              {items.map(n => {
+                const active = pathname === n.id || (n.id === "/dashboard" && pathname === "/");
+                return (
+                  <button key={n.id} onClick={() => router.push(n.id)} style={{
+                    width: "100%", textAlign: "left",
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "8px 10px", borderRadius: 6,
+                    background: active ? "var(--bg-3)" : "transparent",
+                    border: "1px solid " + (active ? "var(--line-2)" : "transparent"),
+                    color: active ? "var(--ink)" : "var(--ink-2)",
+                    cursor: "pointer", fontSize: 13, fontWeight: active ? 500 : 400,
+                    position: "relative",
+                  }}>
+                    <span style={{
+                      width: 18, height: 18, display: "grid", placeItems: "center",
+                      color: active ? "var(--accent)" : "var(--ink-3)",
+                      fontFamily: "var(--mono)", fontSize: 12,
+                    }}>{n.icon}</span>
+                    <span style={{ flex: 1 }}>{n.label}</span>
+                    {n.badge && (
+                      <span className="mono" style={{
+                        fontSize: 9.5, padding: "2px 6px", borderRadius: 3,
+                        background: "var(--crit)", color: "#fff", fontWeight: 600,
+                      }}>{n.badge}</span>
+                    )}
+                    {active && <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 2, background: "var(--accent)", borderRadius: 2 }} />}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
       </nav>
 
       {/* User */}

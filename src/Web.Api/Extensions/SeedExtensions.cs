@@ -1,4 +1,9 @@
+using Microsoft.Extensions.Logging;
+using Modules.Ai.Application.Rag;
+using Modules.Ai.Application.Rag.Indexing;
+using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database;
+using Modules.Ai.Infrastructure.Rag.Seed;
 using Modules.Alerts.Infrastructure.Database;
 using Modules.Alerts.Infrastructure.Seed;
 using Modules.Analytics.Infrastructure.Database;
@@ -24,7 +29,16 @@ public static class SeedExtensions
         await AlertsSeeder.SeedAsync(sp.GetRequiredService<AlertsDbContext>());
         await AnalyticsSeeder.SeedAsync(sp.GetRequiredService<AnalyticsDbContext>());
 
-        // AI has no seed data (chat logs are accumulated at runtime), but ensure ctx is wired.
         _ = sp.GetRequiredService<AiDbContext>();
+
+        RagOptions ragOptions = sp.GetRequiredService<RagOptions>();
+        if (ragOptions.Enabled && ragOptions.AutoSeedCorpus)
+        {
+            ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("KnowledgeCorpusSeeder");
+            await KnowledgeCorpusSeeder.SeedAsync(
+                sp.GetRequiredService<IRagIndexer>(),
+                sp.GetRequiredService<IKnowledgeRepository>(),
+                logger);
+        }
     }
 }

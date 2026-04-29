@@ -22,6 +22,11 @@ internal sealed class LoginCommandHandler(
             return Result.Failure<LoginResponse>(UserErrors.InvalidCredentials);
         }
 
+        if (!user.IsActive)
+        {
+            return Result.Failure<LoginResponse>(UserErrors.AccountInactive);
+        }
+
         TokenPair pair = tokens.Issue(user);
         await refreshTokens.AddAsync(
             RefreshToken.Issue(user.Id, tokens.HashRefreshToken(pair.RefreshToken), pair.RefreshExpiresAtUtc),

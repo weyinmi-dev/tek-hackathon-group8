@@ -2,7 +2,8 @@
 #
 # Five services, ONE Docker network. The modular-monolith backend is a single
 # container; nginx is the only public-facing port (80). Postgres + Redis are
-# infra; Seq is optional for structured logs.
+# infra; document storage is a named volume so uploaded RAG documents survive
+# `docker compose down`.
 #
 # Quickstart:
 #   cp .env.example .env        # then edit Ai__* + Jwt__Secret if you want real Azure OpenAI
@@ -14,6 +15,7 @@ services:
   nginx:
     image: nginx:1.27-alpine
     container_name: telcopilot.nginx
+    hostname: telcopilot-nginx
     depends_on:
       - frontend
       - backend
@@ -29,6 +31,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: telcopilot.frontend
+    hostname: telcopilot-frontend
     environment:
       - NODE_ENV=production
       - BACKEND_INTERNAL_URL=http://backend:8080
@@ -40,10 +43,11 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.backend
     container_name: telcopilot.backend
+    hostname: telcopilot-backend
     environment:
       - ASPNETCORE_ENVIRONMENT=${ASPNETCORE_ENVIRONMENT:-Development}
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__Database=Host=postgres;Port=5432;Database=telcopilot;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
+      - ConnectionStrings__telcopilot=Host=postgres;Port=5432;Database=telcopilot;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
       - ConnectionStrings__Cache=redis:6379
       # JWT — SET Jwt__Secret to a 32+char random in .env for anything beyond local dev
       - Jwt__Secret=${JWT_SECRET:-dev-secret-replace-with-32+char-random-via-env-please}
@@ -54,6 +58,15 @@ services:
       - Ai__AzureOpenAi__Endpoint=${AZURE_OPENAI_ENDPOINT:-}
       - Ai__AzureOpenAi__ApiKey=${AZURE_OPENAI_API_KEY:-}
       - Ai__AzureOpenAi__Deployment=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o-mini}
+      - Ai__AzureOpenAi__EmbeddingDeployment=${AZURE_OPENAI_EMBEDDING_DEPLOYMENT:-}
+      # RAG sub-section (Ai:Rag:*) — empty values keep the defaults (Enabled=true, TopK=5, 1536-dim).
+      - Ai__Rag__Enabled=${AI_RAG_ENABLED:-true}
+      - Ai__Rag__TopK=${AI_RAG_TOPK:-5}
+      - Ai__Rag__EmbeddingDimensions=${AI_RAG_EMBEDDING_DIMENSIONS:-1536}
+      # Document storage — local-disk provider root (mounted from a named volume below).
+      - Ai__Documents__LocalRoot=/var/telcopilot/documents
+    volumes:
+      - telcopilot-doc-store:/var/telcopilot/documents
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,8 +76,12 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: postgres:17-alpine
+    # pgvector image is the upstream postgres:17 with the `vector` extension preinstalled.
+    # The AI module's RAG layer creates the extension on startup with CREATE EXTENSION
+    # IF NOT EXISTS vector — that requires the extension files to already be on disk.
+    image: pgvector/pgvector:pg17
     container_name: telcopilot.postgres
+    hostname: telcopilot-postgres
     environment:
       - POSTGRES_DB=telcopilot
       - POSTGRES_USER=postgres
@@ -82,12 +99,24 @@ services:
   redis:
     image: redis:7-alpine
     container_name: telcopilot.redis
+    hostname: telcopilot-redis
+    # AOF persistence — survives container restart; the named volume keeps the data
+    # across `docker compose down` (without -v).
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - telcopilot-redis-data:/data
     networks: [tekhack-net]
     restart: unless-stopped
 
 networks:
   tekhack-net:
+    name: tekhack-net
     driver: bridge
 
 volumes:
   telcopilot-pg-data:
+    name: telcopilot-pg-data
+  telcopilot-redis-data:
+    name: telcopilot-redis-data
+  telcopilot-doc-store:
+    name: telcopilot-doc-store

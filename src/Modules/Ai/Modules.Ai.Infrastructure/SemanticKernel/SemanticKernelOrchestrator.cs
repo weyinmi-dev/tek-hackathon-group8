@@ -38,22 +38,32 @@ internal sealed class SemanticKernelOrchestrator(
         You are TelcoPilot, an AI assistant embedded in MTN Nigeria Network Operations Center
         for a Lagos, Nigeria metro carrier. The user is an {userRole} (engineer, manager, or admin).
 
-        Your role is to provide accurate, actionable insights based on network data.
+        Your role is to provide accurate, actionable insights based on network data and prior
+        operational knowledge.
 
-        You have three plugins:
-          - DiagnosticsSkill : tower & region metrics (signal, load, status, issue)
-          - OutageSkill      : active and recent incidents (severity, root-cause, subs affected)
-          - RecommendationSkill : operator runbook playbooks (3 concrete actions per cause class)
+        You have these plugins available — call them as needed before composing the answer:
+          - DiagnosticsSkill   : live tower & region metrics (signal, load, status, issue)
+          - OutageSkill        : active and recent incidents (severity, root-cause, subs affected)
+          - RecommendationSkill: operator runbook playbooks (3 concrete actions per cause class)
+          - KnowledgeSkill     : RAG over historical incident reports, outage summaries, engineering
+                                 SOPs, tower performance trends, alert history. Call search_knowledge
+                                 for 'why is X slow', 'has this happened before', 'what's the runbook'.
+          - InternalToolsSkill : MCP-style internal tools — get_network_metrics, get_outages,
+                                 analyze_latency, find_best_connectivity. Use for deterministic
+                                 numeric summaries and failover targeting.
 
         Instructions:
-        1. Analyze the query using available plugins.
-        2. Provide a structured response.
-        3. Cite specific tower IDs (e.g. TWR-LEK-003) and incident IDs (e.g. INC-2841).
-        4. Keep response under 200 words.
+        1. Decide whether you need historical context (KnowledgeSkill), live state (Diagnostics /
+           InternalToolsSkill), or both, and call the relevant plugins.
+        2. Cite knowledge-base hits inline using their source key — e.g. [INC-2841-WRITEUP] or
+           [SOP-FIBER-CUT-V3] — when the answer leans on retrieved context.
+        3. Provide a structured response.
+        4. Cite specific tower IDs (e.g. TWR-LEK-003) and incident IDs (e.g. INC-2841).
+        5. Keep response under 220 words.
 
         Response Format:
         ROOT CAUSE
-        <2-3 sentences identifying the most likely cause, citing specific data>
+        <2-3 sentences identifying the most likely cause, citing specific data and any KB sources>
 
         AFFECTED
         <bullet list of 2-4 items: regions, tower IDs, subscriber counts>
@@ -68,11 +78,15 @@ internal sealed class SemanticKernelOrchestrator(
         ChatHistory history = new(systemPrompt);
         history.AddUserMessage(query);
 
+        // NOTE: do not set MaxTokens here. SK 1.74's OpenAIPromptExecutionSettings.MaxTokens
+        // binds to ChatCompletionOptions.MaxTokens (the obsolete property in OpenAI SDK 2.x),
+        // which serializes on the wire as "max_tokens". GPT-5 family reasoning models reject
+        // that param and require "max_completion_tokens", so setting it produces a 400.
+        // The system prompt already caps the answer at ~200 words.
         OpenAIPromptExecutionSettings settings = new()
         {
             FunctionChoiceBehavior = FunctionChoiceBehavior.Auto(),
             Temperature = 0.2,
-            MaxTokens = 600,
         };
 
         try
@@ -108,8 +122,36 @@ internal sealed class SemanticKernelOrchestrator(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Azure OpenAI call failed; falling back to mock answer.");
-            return MockAnswer(query, trace, "azure-openai-fallback");
+            logger.LogError(ex, "Azure OpenAI call failed; surfacing diagnostic answer.");
+            trace.Add(new SkillTraceEntry("LlmComposer", "compose", 0, "error"));
+
+            string detail = $"{ex.GetType().Name}: {ex.Message}";
+            if (ex.InnerException is not null)
+            {
+                detail += $"\n  → {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
+            }
+
+            string answer = $"""
+            ROOT CAUSE
+            The Azure OpenAI call failed. The copilot is wired up but the upstream model call threw before a response was produced.
+
+            AFFECTED
+            • Live answers are unavailable until the upstream call succeeds.
+            • Skills, DB, and auth all reached this point fine — the failure is in the chat-completion request.
+
+            RECOMMENDED ACTIONS
+            1. Read the exception below and address its root cause.
+            2. Confirm Ai:AzureOpenAi:Endpoint, ApiKey, and Deployment are set in user-secrets.
+            3. Verify the deployment '{nameof(SemanticKernelOrchestrator)}' is configured to call exists in the Azure resource.
+
+            EXCEPTION
+            {detail}
+
+            CONFIDENCE
+            0 % — diagnostic, not a model answer.
+            """;
+
+            return new CopilotAnswer(answer, 0.0, trace, AttachmentSelector.Select(query), "azure-openai-error");
         }
     }
 

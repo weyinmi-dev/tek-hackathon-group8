@@ -19,11 +19,19 @@ internal sealed class UserRepository(IdentityDbContext db) : IUserRepository
         return db.Users.FirstOrDefaultAsync(u => u.Email == normalized, ct);
     }
 
+    public Task<User?> GetByHandleAsync(string handle, CancellationToken cancellationToken = default)
+    {
+        string normalized = handle.Trim();
+        return db.Users.FirstOrDefaultAsync(u => u.Handle == normalized, cancellationToken);
+    }
+
     public Task<User?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db.Users.FirstOrDefaultAsync(u => u.Id == id, ct);
 
     public async Task AddAsync(User user, CancellationToken ct = default) =>
         await db.Users.AddAsync(user, ct);
+
+    public void Remove(User user) => db.Users.Remove(user);
 
     public Task<int> CountAsync(CancellationToken ct = default) => db.Users.CountAsync(ct);
 
