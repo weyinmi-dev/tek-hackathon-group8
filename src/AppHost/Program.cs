@@ -38,12 +38,8 @@ IResourceBuilder<PostgresServerResource> postgres = builder
     // Distinct volume name from docker-compose's telcopilot-pg-data so Aspire (dev)
     // and compose (prod-shaped) don't fight over the same data dir.
     .WithDataVolume("telcopilot-pg-data-aspire")
-    .WithPgAdmin()
-    .WithEndpoint(
-        name: "pgadmin",
-        port: 5055,
-        targetPort: 80       
-    );
+    .WithPgAdmin(pgAdmin => pgAdmin.WithHostPort(5055)
+               .WithLifetime(ContainerLifetime.Persistent));
 #pragma warning restore S125 // Sections of code should not be commented out
 
 
