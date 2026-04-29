@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.SemanticKernel;
+using Npgsql;
 using Modules.Ai.Application.Rag;
 using Modules.Ai.Application.Rag.Chunking;
 using Modules.Ai.Application.Rag.Embeddings;
@@ -38,8 +39,24 @@ public static class DependencyInjection
         RagOptions rag = configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
         services.AddSingleton(rag);
 
-        services.AddDbContext<AiDbContext>(opts => opts
-            .UseNpgsql(connectionString, npg =>
+        // Build an explicit NpgsqlDataSource with the pgvector type plugin registered. This is
+        // required: the connection-string overload of UseNpgsql() creates an internal data source
+        // that does NOT process EF-level plugins for parameter serialization, so writing a
+        // Pgvector.Vector parameter would throw "no NpgsqlDbType". UseVector() at the data-source
+        // level wires up Vector ↔ vector(N) for both reads and writes.
+        //
+        // The data source is built lazily on first OpenConnection — by which time
+        // EnsurePgVectorExtensionAsync has already created the `vector` extension via a
+        // separate raw connection, so type-OID lookup succeeds.
+        services.AddSingleton<NpgsqlDataSource>(_ =>
+        {
+            var dsb = new NpgsqlDataSourceBuilder(connectionString);
+            dsb.UseVector();
+            return dsb.Build();
+        });
+
+        services.AddDbContext<AiDbContext>((sp, opts) => opts
+            .UseNpgsql(sp.GetRequiredService<NpgsqlDataSource>(), npg =>
             {
                 npg.MigrationsHistoryTable("__ef_migrations_history", Schema.Ai);
                 npg.UseVector();
