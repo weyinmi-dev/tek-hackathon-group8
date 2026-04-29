@@ -18,7 +18,7 @@ type Msg =
   | { role: "user"; content: string }
   | { role: "assistant"; answer: CopilotAnswer; query: string };
 
-export function Copilot({ embedded = false }: { embedded?: boolean }) {
+export function Copilot({ embedded = false, initialQuery }: { embedded?: boolean; initialQuery?: string }) {
   const [messages, setMessages] = useState<Msg[]>([
     { role: "system", content: "TelcoPilot · v1.4 · Powered by Azure OpenAI + Semantic Kernel · Context: Lagos metro NOC" },
   ]);
@@ -30,6 +30,9 @@ export function Copilot({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, trace, busy]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (initialQuery) ask(initialQuery); }, []);
 
   async function ask(q: string) {
     if (!q.trim() || busy) return;
