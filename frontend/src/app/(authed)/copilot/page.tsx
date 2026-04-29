@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { Copilot } from "@/components/Copilot";
+import { ConversationsSidebar } from "@/components/ConversationsSidebar";
 
 function CopilotInner() {
   const params = useSearchParams();

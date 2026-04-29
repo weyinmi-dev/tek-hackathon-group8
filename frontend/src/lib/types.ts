@@ -102,6 +102,47 @@ export type CopilotAnswer = {
   skillTrace: SkillTraceEntry[];
   attachments: string[];
   provider: string;
+  conversationId: string;
+  userMessageId: string;
+  assistantMessageId: string;
+};
+
+// Mirrors Modules.Ai.Domain.Conversations.MessageRole (int enum)
+export type MessageRole = 0 | 1 | 2 | 3;
+export const MessageRoleName = { 0: "system", 1: "user", 2: "assistant", 3: "tool" } as const;
+
+// Shape stored in messages.metadata for assistant turns — see MessageMetadata in
+// Modules.Ai.Application.Copilot.AskCopilot.AskCopilotCommandHandler.
+export type AssistantMessageMetadata = {
+  Provider: string;
+  Confidence: number;
+  SkillTrace: SkillTraceEntry[];
+  Attachments: string[];
+};
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  messageCount: number;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  lastMessageAtUtc: string | null;
+};
+
+export type ConversationMessage = {
+  id: string;
+  role: MessageRole;
+  content: string;
+  metadata: string | null;
+  createdAtUtc: string;
+};
+
+export type ConversationDetail = {
+  id: string;
+  title: string;
+  createdAtUtc: string;
+  updatedAtUtc: string;
+  messages: ConversationMessage[];
 };
 
 export type UserListItem = {

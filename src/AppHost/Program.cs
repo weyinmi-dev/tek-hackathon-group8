@@ -38,7 +38,8 @@ IResourceBuilder<PostgresServerResource> postgres = builder
     // Distinct volume name from docker-compose's telcopilot-pg-data so Aspire (dev)
     // and compose (prod-shaped) don't fight over the same data dir.
     .WithDataVolume("telcopilot-pg-data-aspire")
-    .WithPgAdmin();
+    .WithPgAdmin(pgAdmin => pgAdmin.WithHostPort(5055)
+               .WithLifetime(ContainerLifetime.Persistent));
 #pragma warning restore S125 // Sections of code should not be commented out
 
 
@@ -72,10 +73,16 @@ IResourceBuilder<ProjectResource> webApi = builder.AddProject<Projects.Web_Api>(
 
 // Next.js frontend. next.config.mjs reads BACKEND_INTERNAL_URL to rewrite /api/* to the API,
 // so the browser hits a single origin and we don't need nginx in dev.
+//
+// isProxied: false — Aspire 13+ rejects proxied non-container endpoints whose Port and
+// TargetPort are equal (which they have to be here, since `next dev` binds directly to
+// the same port we expose to the browser). With isProxied off, Aspire skips the front
+// proxy and the browser hits Next on 3000 directly, which is what we want.
 builder.AddNpmApp("frontend", "../../frontend", "dev")
     .WithReference(webApi)
     .WaitFor(webApi)
-    .WithHttpEndpoint(env: "PORT")
+    .WithHttpEndpoint(port: 3000, targetPort: 3000, isProxied: false)
+    .WithEnvironment("PORT", "3000")
     .WithEnvironment("BACKEND_INTERNAL_URL", webApi.GetEndpoint("http"))
     .WithExternalHttpEndpoints();
 

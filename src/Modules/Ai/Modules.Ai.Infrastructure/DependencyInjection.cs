@@ -77,6 +77,7 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IChatLogRepository, ChatLogRepository>();
+        services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IKnowledgeRepository, KnowledgeRepository>();
         services.AddScoped<IManagedDocumentRepository, ManagedDocumentRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();

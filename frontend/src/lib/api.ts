@@ -1,44 +1,87 @@
 // Unified API client. Reads/writes the access token from cookies on the server
 // (Next App Router) and from localStorage on the client. All requests target the
 // same /api prefix — NGINX handles routing in compose, Next rewrites handle dev.
+//
+// 401 handling: a single in-flight refresh attempt is shared across concurrent
+// requests so a token rotation doesn't stampede the API with N parallel calls
+// to /auth/refresh.
 
 import type {
   Alert, CopilotAnswer, LoginResponse, MapResponse, MetricsResponse, AuditEntry,
   UserListItem, DocumentListItem, DocumentProvider, McpPlugin, McpInvocationResult,
+  ConversationSummary, ConversationDetail,
 } from "./types";
-
-type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
 
 const API_BASE = "/api";
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+// Pluggable token provider — the AuthStore registers itself here at boot so the
+// fetch wrapper can read the latest token without importing the store (and creating
+// an SSR-time evaluation cycle).
+type TokenProvider = () => string | null;
+let getAccessToken: TokenProvider = () => {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem("tp_access");
+};
+type RefreshFn = () => Promise<boolean>;
+let triggerRefresh: RefreshFn = async () => false;
+let inflightRefresh: Promise<boolean> | null = null;
+
+export function configureApi(opts: { getAccessToken: TokenProvider; refresh: RefreshFn }): void {
+  getAccessToken = opts.getAccessToken;
+  triggerRefresh = opts.refresh;
+}
+
+async function request<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
-  // Don't override Content-Type if the body is FormData — let the browser set the multipart boundary.
   if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  // Browser-side: pull token from localStorage. Server components shouldn't
-  // call this directly; use the server helpers below.
-  if (typeof window !== "undefined") {
-    const token = window.localStorage.getItem("tp_access");
-    if (token) headers.set("Authorization", `Bearer ${token}`);
-  }
+  const token = getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store" });
+
+  // Single shared refresh — all concurrent 401s wait on the same promise.
+  if (res.status === 401 && allowRefresh) {
+    inflightRefresh ??= triggerRefresh().finally(() => { inflightRefresh = null; });
+    const refreshed = await inflightRefresh;
+    if (refreshed) {
+      return request<T>(path, init, false);
+    }
+  }
+
   if (res.status === 204) return undefined as T;
   if (!res.ok) {
     let detail = "";
     try { detail = (await res.json()).detail || ""; } catch { /* swallow */ }
-    throw new ApiError(res.status, detail || res.statusText);
+    // Include path + method + token presence in the message — the stack trace alone
+    // wasn't enough to diagnose 401s in production. Now you see "401 GET /chat/conversations
+    // (no bearer)" or "(bearer)" right in the console.
+    const tokenHint = token ? "bearer" : "no bearer";
+    throw new ApiError(res.status, detail || res.statusText, method, path, tokenHint);
   }
-  // No body? (some endpoints return 200 with empty body)
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); this.name = "ApiError"; }
+  public readonly status: number;
+  public readonly method?: string;
+  public readonly path?: string;
+  public readonly tokenHint?: string;
+  constructor(status: number, message: string, method?: string, path?: string, tokenHint?: string) {
+    const enriched = method && path
+      ? `${status} ${method} ${path} (${tokenHint}): ${message}`
+      : message;
+    super(enriched);
+    this.name = "ApiError";
+    this.status = status;
+    this.method = method;
+    this.path = path;
+    this.tokenHint = tokenHint;
+  }
 }
 
 export const api = {
@@ -46,7 +89,8 @@ export const api = {
   login: (email: string, password: string) =>
     request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
   refresh: (refreshToken: string) =>
-    request<LoginResponse>("/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken }) }),
+    // allowRefresh=false: refreshing the refresh token would loop on 401.
+    request<LoginResponse>("/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken }) }, false),
   me: () => request<AuthUserMe>("/auth/me"),
 
   // User CRUD (manager+ for read/create/update; admin for delete)
@@ -65,8 +109,11 @@ export const api = {
     request<void>(`/auth/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   // Operations
-  chat: (query: string) =>
-    request<CopilotAnswer>("/chat", { method: "POST", body: JSON.stringify({ query }) }),
+  chat: (query: string, conversationId?: string | null) =>
+    request<CopilotAnswer>("/chat", {
+      method: "POST",
+      body: JSON.stringify({ query, conversationId: conversationId ?? null }),
+    }),
   map: () => request<MapResponse>("/map"),
   alerts: (opts: { severity?: string; active?: boolean } = {}) => {
     const q = new URLSearchParams();
@@ -77,6 +124,16 @@ export const api = {
     return request<Alert[]>(`/alerts${suffix}`);
   },
   ackAlert: (id: string) => request<void>(`/alerts/${encodeURIComponent(id)}/ack`, { method: "POST" }),
+
+  // Conversations (durable chat history)
+  listConversations: (take = 50) =>
+    request<ConversationSummary[]>(`/chat/conversations?take=${take}`),
+  getConversation: (id: string) =>
+    request<ConversationDetail>(`/chat/conversations/${encodeURIComponent(id)}`),
+  renameConversation: (id: string, title: string) =>
+    request<void>(`/chat/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+  deleteConversation: (id: string) =>
+    request<void>(`/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   // Analytics
   metrics: () => request<MetricsResponse>("/metrics"),

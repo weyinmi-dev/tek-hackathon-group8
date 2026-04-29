@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { observer } from "mobx-react-lite";
 import { useAuth } from "@/lib/auth";
 
 type Role = "engineer" | "manager" | "admin" | "viewer";
@@ -35,7 +36,7 @@ function canSee(item: NavItem, role: Role | undefined): boolean {
   return item.roles.includes(role);
 }
 
-export function Sidebar() {
+export const Sidebar = observer(function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
   const { user, logout } = useAuth();
@@ -129,4 +130,4 @@ export function Sidebar() {
       </div>
     </aside>
   );
-}
+});

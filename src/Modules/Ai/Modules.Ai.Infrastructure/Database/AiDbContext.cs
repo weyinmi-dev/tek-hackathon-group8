@@ -12,6 +12,8 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
     private readonly RagOptions _ragOptions = ragOptions;
 
     public DbSet<ChatLog> ChatLogs => Set<ChatLog>();
+    public DbSet<Conversation> Conversations => Set<Conversation>();
+    public DbSet<Message> Messages => Set<Message>();
     public DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
     public DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
     public DbSet<ManagedDocument> ManagedDocuments => Set<ManagedDocument>();
@@ -36,5 +38,7 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
         modelBuilder.ApplyConfiguration(new KnowledgeDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new KnowledgeChunkConfiguration(_ragOptions));
         modelBuilder.ApplyConfiguration(new ManagedDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new ConversationConfiguration());
+        modelBuilder.ApplyConfiguration(new MessageConfiguration());
     }
 }
