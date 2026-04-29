@@ -4,12 +4,14 @@ import { ChatStore } from "./ChatStore";
 import { UiStore } from "./UiStore";
 
 /**
- * Composes the per-domain stores into a single root and wires the api client to
- * the auth store (so the fetch wrapper can attach the access token + auto-refresh
- * on a 401 without importing the store directly).
+ * Composes the per-domain stores into a single root.
  *
- * Lives entirely on the client; constructed once per page session inside the
- * StoreProvider. Stores are then accessible anywhere via useStores().
+ * The api client wiring (configureApi) is intentionally NOT done here — it is
+ * done from <StoreProvider>'s useEffect. Reason: with reactStrictMode the
+ * useState initializer runs twice in dev, constructing two RootStore instances.
+ * useState only keeps the first; if we wired configureApi from the ctor, the
+ * module-level token closure would reference the discarded second instance
+ * (whose auth.accessToken is always null) → spurious "no bearer" 401s.
  */
 export class RootStore {
   readonly auth: AuthStore;
@@ -20,7 +22,9 @@ export class RootStore {
     this.auth = new AuthStore();
     this.ui = new UiStore();
     this.chat = new ChatStore(this.auth);
+  }
 
+  wireApi(): void {
     configureApi({
       getAccessToken: () => this.auth.accessToken,
       refresh: () => this.auth.refresh(),

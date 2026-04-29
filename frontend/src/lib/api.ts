@@ -32,6 +32,7 @@ export function configureApi(opts: { getAccessToken: TokenProvider; refresh: Ref
 }
 
 async function request<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
@@ -55,14 +56,32 @@ async function request<T>(path: string, init: RequestInit = {}, allowRefresh = t
   if (!res.ok) {
     let detail = "";
     try { detail = (await res.json()).detail || ""; } catch { /* swallow */ }
-    throw new ApiError(res.status, detail || res.statusText);
+    // Include path + method + token presence in the message — the stack trace alone
+    // wasn't enough to diagnose 401s in production. Now you see "401 GET /chat/conversations
+    // (no bearer)" or "(bearer)" right in the console.
+    const tokenHint = token ? "bearer" : "no bearer";
+    throw new ApiError(res.status, detail || res.statusText, method, path, tokenHint);
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); this.name = "ApiError"; }
+  public readonly status: number;
+  public readonly method?: string;
+  public readonly path?: string;
+  public readonly tokenHint?: string;
+  constructor(status: number, message: string, method?: string, path?: string, tokenHint?: string) {
+    const enriched = method && path
+      ? `${status} ${method} ${path} (${tokenHint}): ${message}`
+      : message;
+    super(enriched);
+    this.name = "ApiError";
+    this.status = status;
+    this.method = method;
+    this.path = path;
+    this.tokenHint = tokenHint;
+  }
 }
 
 export const api = {

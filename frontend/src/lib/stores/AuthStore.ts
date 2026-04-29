@@ -47,11 +47,20 @@ export class AuthStore {
 
   constructor() {
     makeAutoObservable(this, {}, { autoBind: true });
+  }
+
+  /**
+   * Browser-only hydration. Called from <StoreProvider> in a useEffect so server-rendered
+   * and client first-paint markup match (hasHydrated=false on both). Without this, reading
+   * localStorage during construction would diverge SSR from CSR and trigger a hydration
+   * mismatch — which tears down the store and loses any in-flight requests' Bearer header.
+   */
+  boot(): void {
+    if (this.hasHydrated || typeof window === "undefined") return;
 
     hydrate<AuthSnapshot>(AUTH_KEY, snap => {
       Object.assign(this, snap);
     });
-    runInAction(() => { this.hasHydrated = true; });
 
     // Persist on every relevant mutation. Reading the snapshot inside the autorun
     // makes it tracked → writes only fire when something actually changes.
@@ -66,6 +75,7 @@ export class AuthStore {
     });
 
     this.scheduleRefresh();
+    runInAction(() => { this.hasHydrated = true; });
   }
 
   get snapshot(): AuthSnapshot {

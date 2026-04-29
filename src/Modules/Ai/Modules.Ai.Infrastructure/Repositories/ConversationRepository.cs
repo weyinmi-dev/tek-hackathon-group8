@@ -24,6 +24,17 @@ internal sealed class ConversationRepository(AiDbContext db) : IConversationRepo
 
     public void Remove(Conversation conversation) => db.Conversations.Remove(conversation);
 
+    public void Detach(Conversation conversation) => db.Entry(conversation).State = EntityState.Detached;
+
+    public Task<int> UpdateActivityAsync(Guid id, int messageCount, DateTime updatedAtUtc, DateTime lastMessageAtUtc, CancellationToken cancellationToken = default) =>
+        db.Conversations
+            .Where(c => c.Id == id)
+            .ExecuteUpdateAsync(
+                s => s.SetProperty(c => c.MessageCount, messageCount)
+                      .SetProperty(c => c.UpdatedAtUtc, updatedAtUtc)
+                      .SetProperty(c => c.LastMessageAtUtc, lastMessageAtUtc),
+                cancellationToken);
+
     public async Task<IReadOnlyList<Conversation>> ListForUserAsync(Guid userId, int take, CancellationToken cancellationToken = default) =>
         await db.Conversations
             .AsNoTracking()

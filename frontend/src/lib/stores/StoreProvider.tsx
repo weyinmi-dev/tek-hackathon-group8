@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { RootStore } from "./RootStore";
 
 const StoreContext = createContext<RootStore | null>(null);
@@ -10,12 +10,27 @@ const StoreContext = createContext<RootStore | null>(null);
  * useState's initializer (instead of `new RootStore()` at render time) so HMR /
  * StrictMode double-invokes don't multiply hydration / autoruns.
  *
- * The provider is a client component → SSR renders without stores; on the
- * client, the stores hydrate from localStorage in their constructors and the
- * tree re-renders observers automatically.
+ * SSR safety: the RootStore constructor only wires DI — it does NOT touch localStorage.
+ * Each store exposes a boot() method we invoke in a useEffect, guaranteeing that the
+ * server-rendered markup and the client's first paint are identical (every store's
+ * `hasHydrated` is false on both). After mount, boot() reads localStorage and the
+ * tree updates. Without this split we'd mismatch SSR vs CSR — React would regenerate
+ * the entire tree, the store would remount, and any in-flight request would lose its
+ * Bearer header (manifests as a 401 on the first chat call after a refresh).
  */
 export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [store] = useState(() => new RootStore());
+
+  useEffect(() => {
+    // wireApi must run against the kept instance — see RootStore.wireApi for why.
+    // Order matters: wire the token provider first so any request kicked off by
+    // boot() (e.g. ChatStore's listConversations autorun) sees the bearer header.
+    store.wireApi();
+    store.auth.boot();
+    store.ui.boot();
+    store.chat.boot();
+  }, [store]);
+
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
 }
 

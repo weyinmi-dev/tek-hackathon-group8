@@ -30,12 +30,19 @@ internal sealed class AskCopilotCommandHandler(
             return Result.Failure<CopilotAnswer>(Error.Problem("Copilot.QueryRequired", "Query is required."));
         }
 
-        // Resolve or create the conversation. We persist the user's message BEFORE the
-        // orchestrator call so a slow/failed AI call still leaves the question in history;
-        // the user can refresh, see their question, and retry.
-        Conversation conversation = await ResolveConversationAsync(request, cancellationToken);
+        // Resolve or create the conversation, append the user's question, and call the AI.
+        //
+        // Why we don't just SaveChanges over the tracked Conversation entity: when the
+        // conversation already exists, EF Core was reproducibly throwing
+        // DbUpdateConcurrencyException ("expected 1 row, got 0") on the UPDATE that flushes
+        // the activity scalars (MessageCount, LastMessageAtUtc, UpdatedAtUtc) — even though
+        // the row demonstrably existed and there's no concurrency token configured. We have
+        // not pinned down the underlying EF/Npgsql cause; instead we sidestep it by detaching
+        // the existing entity before SaveChanges and writing those scalars via a direct
+        // ExecuteUpdate after the inserts succeed. Newly-created conversations stay on the
+        // normal INSERT path (the bug only affects UPDATE).
+        (Conversation conversation, bool isExisting) = await ResolveConversationAsync(request, cancellationToken);
         Message userMessage = conversation.AppendMessage(MessageRole.User, request.Query);
-        await uow.SaveChangesAsync(cancellationToken);
 
         CopilotAnswer answer;
         try
@@ -45,6 +52,16 @@ internal sealed class AskCopilotCommandHandler(
         catch (Exception ex)
         {
             logger.LogError(ex, "AI orchestrator failed for query from {ActorHandle}", request.ActorHandle);
+            // Persist the user question even though the AI never answered, so a refresh shows
+            // the question (and the user can retry) instead of silently dropping the turn.
+            try
+            {
+                await PersistAndUpdateActivityAsync(conversation, isExisting, cancellationToken);
+            }
+            catch (Exception saveEx)
+            {
+                logger.LogError(saveEx, "Failed to persist user question after AI failure for {ActorHandle}", request.ActorHandle);
+            }
             return Result.Failure<CopilotAnswer>(Error.Problem("Copilot.AiFailure", "AI service is temporarily unavailable."));
         }
 
@@ -72,7 +89,7 @@ internal sealed class AskCopilotCommandHandler(
             skillTrace: string.Join(" → ", answer.SkillTrace.Select(s => $"{s.Skill}.{s.Function}")),
             confidence: answer.Confidence), cancellationToken);
 
-        await uow.SaveChangesAsync(cancellationToken);
+        await PersistAndUpdateActivityAsync(conversation, isExisting, cancellationToken);
 
         await analytics.RecordAsync(
             actor: request.ActorHandle,
@@ -90,14 +107,14 @@ internal sealed class AskCopilotCommandHandler(
         });
     }
 
-    private async Task<Conversation> ResolveConversationAsync(AskCopilotCommand request, CancellationToken ct)
+    private async Task<(Conversation conversation, bool isExisting)> ResolveConversationAsync(AskCopilotCommand request, CancellationToken ct)
     {
         if (request.ConversationId is { } existingId)
         {
             Conversation? existing = await conversations.GetAsync(existingId, ct);
             if (existing is not null && existing.UserId == request.UserId)
             {
-                return existing;
+                return (existing, true);
             }
             // Falls through: stale/foreign id → new conversation. Don't 404 — UX is better.
             logger.LogInformation("Conversation {ConversationId} not found or not owned by {UserId}; starting fresh.", existingId, request.UserId);
@@ -105,7 +122,33 @@ internal sealed class AskCopilotCommandHandler(
 
         var fresh = Conversation.Start(request.UserId, request.ActorHandle, initialTitle: request.Query);
         await conversations.AddAsync(fresh, ct);
-        return fresh;
+        return (fresh, false);
+    }
+
+    /// <summary>
+    /// For new conversations: a normal SaveChanges INSERTs everything (conversation + messages + chat_log).
+    /// For existing conversations: detach the conversation BEFORE SaveChanges so EF doesn't emit the
+    /// failing UPDATE on it, let SaveChanges INSERT just the new messages + chat_log, then write the
+    /// activity scalars with a direct ExecuteUpdate (which bypasses the change tracker).
+    /// </summary>
+    private async Task PersistAndUpdateActivityAsync(Conversation conversation, bool isExisting, CancellationToken ct)
+    {
+        if (isExisting)
+        {
+            // Snapshot the values we need before detaching — once detached, the entity is no
+            // longer special, but we still hold the reference, so reading is fine.
+            int messageCount = conversation.MessageCount;
+            DateTime updatedAtUtc = conversation.UpdatedAtUtc;
+            DateTime lastMessageAtUtc = conversation.LastMessageAtUtc ?? conversation.UpdatedAtUtc;
+            Guid conversationId = conversation.Id;
+
+            conversations.Detach(conversation);
+            await uow.SaveChangesAsync(ct);
+            await conversations.UpdateActivityAsync(conversationId, messageCount, updatedAtUtc, lastMessageAtUtc, ct);
+            return;
+        }
+
+        await uow.SaveChangesAsync(ct);
     }
 }
 

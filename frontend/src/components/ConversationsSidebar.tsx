@@ -68,13 +68,24 @@ export const ConversationsSidebar = observer(function ConversationsSidebar() {
             );
           }
           return (
-            <button
+            // Outer row is a <div role="button"> rather than a <button> because the active
+            // state nests rename/delete <button>s inside it — and <button> inside <button>
+            // is invalid HTML (causes a hydration error).
+            <div
               key={c.id}
+              role="button"
+              tabIndex={0}
               onClick={() => chat.selectConversation(c.id)}
               onDoubleClick={() => { setRenaming(c.id); setDraftTitle(c.title); }}
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  chat.selectConversation(c.id);
+                }
+              }}
               style={{
-                appearance: "none", width: "100%", textAlign: "left",
-                padding: "10px 12px", border: "none", cursor: "pointer",
+                width: "100%", textAlign: "left",
+                padding: "10px 12px", cursor: "pointer",
                 background: active ? "var(--bg-2)" : "transparent",
                 borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
                 color: "var(--ink)", display: "flex", flexDirection: "column", gap: 4,
@@ -106,7 +117,7 @@ export const ConversationsSidebar = observer(function ConversationsSidebar() {
                   >delete</button>
                 </div>
               )}
-            </button>
+            </div>
           );
         })}
       </div>

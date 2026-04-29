@@ -62,12 +62,19 @@ export class ChatStore {
 
   constructor(private auth: AuthStore) {
     makeAutoObservable(this, {}, { autoBind: true });
+  }
+
+  /**
+   * Browser-only hydration. See AuthStore.boot — same SSR/CSR-mismatch reasoning.
+   * Reading localStorage and starting autoruns must wait until after mount.
+   */
+  boot(): void {
+    if (this.hasHydrated || typeof window === "undefined") return;
 
     hydrate<ChatSnapshot>(CHAT_KEY, snap => {
       this.activeConversationId = snap.activeConversationId;
       this.conversations = snap.recentConversations ?? [];
     });
-    runInAction(() => { this.hasHydrated = true; });
 
     this._disposers.push(autorun(() => persist(CHAT_KEY, this.snapshot)));
 
@@ -93,6 +100,8 @@ export class ChatStore {
         runInAction(() => this.reset());
       }
     }));
+
+    runInAction(() => { this.hasHydrated = true; });
   }
 
   /** Track the most recently loaded conversation so the autorun above doesn't double-fetch. */
