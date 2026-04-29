@@ -15,20 +15,24 @@ const SUGGESTED = [
   "Compare Lekki vs Victoria Island latency",
 ];
 
-/**
- * Copilot is now a thin observer over ChatStore — message list, send, and
- * trace state all live in the store. That's what makes refresh + session
- * resume "just work": the store hydrates from localStorage on boot, refetches
- * the active conversation from the server, and this component re-renders.
- */
-export const Copilot = observer(function Copilot({ embedded = false }: { embedded?: boolean }) {
-  const chat = useChatStore();
+type Msg =
+  | { role: "system"; content: string }
+  | { role: "user"; content: string }
+  | { role: "assistant"; answer: CopilotAnswer; query: string };
+
+export function Copilot({ embedded = false, initialQuery }: { embedded?: boolean; initialQuery?: string }) {
+  const [messages, setMessages] = useState<Msg[]>([
+    { role: "system", content: "TelcoPilot · v1.4 · Powered by Azure OpenAI + Semantic Kernel · Context: Lagos metro NOC" },
+  ]);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [chat.messages, chat.pendingTrace, chat.sending]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (initialQuery) ask(initialQuery); }, []);
 
   async function ask(q: string) {
     if (!q.trim() || chat.sending) return;

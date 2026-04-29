@@ -169,6 +169,28 @@ echo "AZURE_OPENAI_ENDPOINT=https://<your>.openai.azure.com/" >> .env
 echo "AZURE_OPENAI_API_KEY=<key>"                         >> .env
 docker compose up -d --force-recreate backend
 ```
+### AI Output and Observability
+
+The Copilot returns structured responses including:
+
+- Answer → generated insight  
+- Confidence score → reliability of the response  
+- Skill trace → sequence of executed skills  
+- Provider → AI engine used  
+
+All interactions are logged and persisted for audit and analytics purposes.
+
+
+---
+###  context awareness 
+
+Each query includes user identity and role, enabling the system to generate context-aware responses tailored to different operational roles (e.g., Engineer vs Manager).
+
+
+---
+
+
+
 
 ---
 
@@ -223,6 +245,81 @@ src/
     ├── Alerts/              # incidents with AI cause + ack flow
     ├── Analytics/           # KPIs, sparklines, audit trail
     └── Ai/                  # Semantic Kernel + 3 skills + Mock fallback
+
+## Frontend Architecture
+
+The frontend is built using Next.js with TypeScript, providing a modular and scalable interface for telecom network operations and AI-assisted insights.
+
+### Component Structure
+
+The UI is organized into reusable components:
+
+- Copilot
+  - AI-powered interface for natural language queries
+  - Acts as the user entry point for interacting with the system intelligence layer
+
+- Network Maps
+  - Visual representation of telecom infrastructure
+  - Displays tower locations, signal strength, and load status
+
+---
+
+### Application Modules
+
+The frontend contains a feature-based architecture under `app/authed`, representing authenticated user access.
+
+####  Users Module
+- Displays user profiles and roles
+- Implements Role-Based Access Control (RBAC)
+- Visualizes permissions per role (Engineer, Manager, Admin, Viewer)
+
+####  Audit Module
+- Displays system and user activity logs
+- Tracks actions such as login, changes, and system events
+- Supports filtering and read-only inspection
+
+---
+
+###  Core Functional Modules
+
+####  Dashboard
+- Displays KPIs and system performance metrics
+- Includes visual charts and summary indicators
+
+####  Alerts
+- Displays network incidents categorized by severity
+- Includes AI-style summaries of incident causes and impact
+
+####  Map
+- Visualizes telecom infrastructure geographically
+- Shows signal strength, tower load, and operational status
+
+#### Insights
+- Provides aggregated analytics and trends
+- Combines backend data with computed visual summaries
+
+####  Copilot
+- Natural language interface for querying system intelligence
+- Sends requests to backend `/api/chat` endpoint
+
+---
+
+###  Frontend Data Flow
+
+User Input  
+→ UI Components  
+→ API Client  
+→ Backend API (`/api/*`)  
+→ Response Rendered in UI
+
+---
+
+###  UI Design System
+
+- Built with Next.js App Router architecture
+- Supports light/dark themes
+- Uses modular component-based design
+- Focused on operational clarity for telecom monitoring
 
 frontend/
 ├── Dockerfile               # multi-stage Node 22 → next standalone
