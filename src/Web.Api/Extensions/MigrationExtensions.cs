@@ -20,13 +20,16 @@ public static class MigrationExtensions
         await EnsureSchemaAsync<NetworkDbContext>(scope);
         await EnsureSchemaAsync<AlertsDbContext>(scope);
         await EnsureSchemaAsync<AnalyticsDbContext>(scope);
+
+        // The AI module uses pgvector for the knowledge_chunks.embedding column. The vector
+        // column type cannot be created until the extension exists. EnsureCreated does not
+        // run pre-create scripts, so we issue CREATE EXTENSION IF NOT EXISTS upfront. The
+        // pgvector docker image bundles the extension files; if the operator points at a
+        // stock Postgres image the call will surface a clear "extension not available" error.
+        await EnsurePgVectorExtensionAsync<AiDbContext>(scope);
         await EnsureSchemaAsync<AiDbContext>(scope);
     }
 
-    // EnsureCreatedAsync short-circuits when the database already exists, so only
-    // the first DbContext gets its tables created. Each module owns its own schema,
-    // so we create the database once, then call CreateTablesAsync per context and
-    // swallow duplicate-schema/table errors on re-runs.
     private static async Task EnsureSchemaAsync<TContext>(IServiceScope scope) where TContext : DbContext
     {
         TContext ctx = scope.ServiceProvider.GetRequiredService<TContext>();
@@ -45,5 +48,13 @@ public static class MigrationExtensions
         {
             // 42P07 = duplicate_table, 42P06 = duplicate_schema. Idempotent re-run.
         }
+    }
+
+    private static async Task EnsurePgVectorExtensionAsync<TContext>(IServiceScope scope) where TContext : DbContext
+    {
+        TContext ctx = scope.ServiceProvider.GetRequiredService<TContext>();
+        // CREATE EXTENSION is idempotent with IF NOT EXISTS. Owns its own connection — runs
+        // before EnsureCreated, which would otherwise fail trying to create a vector column.
+        await ctx.Database.ExecuteSqlRawAsync("CREATE EXTENSION IF NOT EXISTS vector;");
     }
 }

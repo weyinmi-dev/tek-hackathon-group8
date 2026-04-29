@@ -1,16 +1,23 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Modules.Ai.Application.Rag;
 using Modules.Ai.Domain.Conversations;
+using Modules.Ai.Domain.Knowledge;
+using Modules.Ai.Infrastructure.Database.Configurations;
 
 namespace Modules.Ai.Infrastructure.Database;
 
-public sealed class AiDbContext(DbContextOptions<AiDbContext> options) : DbContext(options)
+public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOptions ragOptions) : DbContext(options)
 {
+    private readonly RagOptions _ragOptions = ragOptions;
+
     public DbSet<ChatLog> ChatLogs => Set<ChatLog>();
+    public DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
+    public DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema(Schema.Ai);
+        modelBuilder.HasPostgresExtension("vector");
 
         modelBuilder.Entity<ChatLog>(b =>
         {
@@ -23,5 +30,8 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options) : DbConte
             b.HasIndex(c => c.OccurredAtUtc);
             b.Ignore(c => c.DomainEvents);
         });
+
+        modelBuilder.ApplyConfiguration(new KnowledgeDocumentConfiguration());
+        modelBuilder.ApplyConfiguration(new KnowledgeChunkConfiguration(_ragOptions));
     }
 }

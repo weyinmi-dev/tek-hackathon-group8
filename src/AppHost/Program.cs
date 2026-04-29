@@ -19,8 +19,11 @@ IDistributedApplicationBuilder builder = DistributedApplication.CreateBuilder(ar
 IResourceBuilder<ParameterResource> pgPassword =
     builder.AddParameter("postgres-password", "postgres123", secret: true);
 
+// pgvector/pgvector:pg17 is the official postgres:17 image with the `vector` extension
+// preinstalled — required by the AI module's RAG layer (CREATE EXTENSION IF NOT EXISTS vector).
 IResourceBuilder<PostgresServerResource> postgres = builder
     .AddPostgres("postgres", password: pgPassword, port: 5723)
+    .WithImage("pgvector/pgvector", "pg17")
     .WithDataVolume()
     .WithPgAdmin();
 
@@ -38,11 +41,15 @@ IResourceBuilder<ProjectResource> webApi = builder.AddProject<Projects.Web_Api>(
     .WithEnvironment("ASPNETCORE_ENVIRONMENT", "Development")
     // Forward user-secrets (Ai, Jwt) to the API process. The values themselves
     // are pulled from this AppHost's user-secrets store, never from source.
-    .WithEnvironment("Ai__Provider",                 builder.Configuration["Ai:Provider"]                 ?? "Mock")
-    .WithEnvironment("Ai__AzureOpenAi__Endpoint",    builder.Configuration["Ai:AzureOpenAi:Endpoint"]    ?? "")
-    .WithEnvironment("Ai__AzureOpenAi__ApiKey",      builder.Configuration["Ai:AzureOpenAi:ApiKey"]      ?? "")
-    .WithEnvironment("Ai__AzureOpenAi__Deployment",  builder.Configuration["Ai:AzureOpenAi:Deployment"]  ?? "gpt-4o-mini")
-    .WithEnvironment("Jwt__Secret",                  builder.Configuration["Jwt:Secret"]                  ?? "dev-secret-replace-in-production-please-32chars-min");
+    .WithEnvironment("Ai__Provider",                          builder.Configuration["Ai:Provider"]                          ?? "Mock")
+    .WithEnvironment("Ai__AzureOpenAi__Endpoint",             builder.Configuration["Ai:AzureOpenAi:Endpoint"]             ?? "")
+    .WithEnvironment("Ai__AzureOpenAi__ApiKey",               builder.Configuration["Ai:AzureOpenAi:ApiKey"]               ?? "")
+    .WithEnvironment("Ai__AzureOpenAi__Deployment",           builder.Configuration["Ai:AzureOpenAi:Deployment"]           ?? "gpt-4o-mini")
+    .WithEnvironment("Ai__AzureOpenAi__EmbeddingDeployment",  builder.Configuration["Ai:AzureOpenAi:EmbeddingDeployment"]  ?? "")
+    .WithEnvironment("Ai__Rag__Enabled",                      builder.Configuration["Ai:Rag:Enabled"]                      ?? "true")
+    .WithEnvironment("Ai__Rag__TopK",                         builder.Configuration["Ai:Rag:TopK"]                         ?? "5")
+    .WithEnvironment("Ai__Rag__EmbeddingDimensions",          builder.Configuration["Ai:Rag:EmbeddingDimensions"]          ?? "1536")
+    .WithEnvironment("Jwt__Secret",                           builder.Configuration["Jwt:Secret"]                           ?? "dev-secret-replace-in-production-please-32chars-min");
 
 // Next.js frontend. next.config.mjs reads BACKEND_INTERNAL_URL to rewrite /api/* to the API,
 // so the browser hits a single origin and we don't need nginx in dev.
