@@ -30,7 +30,7 @@ export function NetworkMap({
   return (
     <div style={{
       position: "relative", width: "100%", height: "100%",
-      background: "radial-gradient(ellipse at 50% 60%, #0c1220 0%, #06080d 70%)",
+      background: "var(--bg-map)",
       border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden",
     }}>
       {/* Grid */}
@@ -38,7 +38,7 @@ export function NetworkMap({
         style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: .4 }}>
         <defs>
           <pattern id="mapgrid" width="5" height="5" patternUnits="userSpaceOnUse">
-            <path d="M 5 0 L 0 0 0 5" fill="none" stroke="rgba(255,255,255,.04)" strokeWidth="0.2" />
+            <path d="M 5 0 L 0 0 0 5" fill="none" stroke="var(--grid-stroke)" strokeWidth="0.2" />
           </pattern>
         </defs>
         <rect width="100" height="100" fill="url(#mapgrid)" />
@@ -50,9 +50,9 @@ export function NetworkMap({
         <path d="M 40 55 Q 55 50 70 60 Q 80 65 75 75 Q 60 80 50 72 Q 42 65 40 55 Z"
           fill="rgba(91,140,255,.06)" stroke="rgba(91,140,255,.18)" strokeWidth=".2" />
         <path d="M 5 18 Q 20 12 38 16 Q 55 18 72 14 Q 88 16 95 28 L 96 50 Q 92 62 86 70 Q 80 82 72 88 Q 55 92 42 88 Q 28 84 18 76 Q 8 68 5 52 Z"
-          fill="none" stroke="rgba(255,255,255,.06)" strokeWidth=".25" />
-        <path d="M 8 30 L 95 32" stroke="rgba(255,255,255,.05)" strokeWidth=".15" strokeDasharray="2 1.5" />
-        <path d="M 30 8 L 32 90" stroke="rgba(255,255,255,.05)" strokeWidth=".15" strokeDasharray="2 1.5" />
+          fill="none" stroke="var(--map-shape-stroke)" strokeWidth=".25" />
+        <path d="M 8 30 L 95 32" stroke="var(--map-shape-stroke)" strokeWidth=".15" strokeDasharray="2 1.5" />
+        <path d="M 30 8 L 32 90" stroke="var(--map-shape-stroke)" strokeWidth=".15" strokeDasharray="2 1.5" />
         <circle cx="74" cy="74" r="14" fill="rgba(255,84,112,.08)" />
         <circle cx="74" cy="74" r="9"  fill="rgba(255,84,112,.12)" />
       </svg>
@@ -107,7 +107,7 @@ export function NetworkMap({
           background: "var(--bg-2)", border: "1px solid var(--line-2)",
           padding: "8px 10px", borderRadius: 6, minWidth: 180,
           fontSize: 11, pointerEvents: "none", zIndex: 5,
-          boxShadow: "0 8px 24px rgba(0,0,0,.5)",
+          boxShadow: "var(--map-overlay-shadow)",
           animation: "fadein .12s ease-out",
         }}>
           <div className="mono" style={{ fontSize: 10, color: "var(--accent)", marginBottom: 3 }}>{hover.id}</div>
@@ -121,8 +121,8 @@ export function NetworkMap({
 
       {!compact && (
         <>
-          <div style={{ position: "absolute", top: 14, right: 14, padding: "6px 10px", background: "rgba(10,14,22,.7)", border: "1px solid var(--line)", borderRadius: 6, fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: ".10em" }}>N ↑ · 6.50°N 3.40°E</div>
-          <div style={{ position: "absolute", bottom: 14, right: 14, padding: "8px 10px", background: "rgba(10,14,22,.7)", border: "1px solid var(--line)", borderRadius: 6, display: "flex", flexDirection: "column", gap: 4, fontFamily: "var(--mono)", fontSize: 10 }}>
+          <div style={{ position: "absolute", top: 14, right: 14, padding: "6px 10px", background: "var(--map-overlay-bg)", border: "1px solid var(--line)", borderRadius: 6, fontFamily: "var(--mono)", fontSize: 10, color: "var(--ink-3)", letterSpacing: ".10em" }}>N ↑ · 6.50°N 3.40°E</div>
+          <div style={{ position: "absolute", bottom: 14, right: 14, padding: "8px 10px", background: "var(--map-overlay-bg)", border: "1px solid var(--line)", borderRadius: 6, display: "flex", flexDirection: "column", gap: 4, fontFamily: "var(--mono)", fontSize: 10 }}>
             <Legend c="var(--accent)" t="OPTIMAL" />
             <Legend c="var(--warn)"   t="DEGRADED" />
             <Legend c="var(--crit)"   t="CRITICAL" />

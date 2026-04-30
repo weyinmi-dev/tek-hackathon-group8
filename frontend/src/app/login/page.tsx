@@ -35,14 +35,14 @@ export default function LoginPage() {
       {/* Left — atmospheric panel */}
       <div style={{
         position: "relative", overflow: "hidden",
-        background: "radial-gradient(ellipse at 30% 70%, #0d1525 0%, #06080d 70%)",
+        background: "var(--bg-hero)",
         borderRight: "1px solid var(--line)",
         padding: "42px 48px", display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
         <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: .5 }}>
           <defs>
             <pattern id="lg" width="4" height="4" patternUnits="userSpaceOnUse">
-              <path d="M 4 0 L 0 0 0 4" fill="none" stroke="rgba(255,255,255,.04)" strokeWidth=".15" />
+              <path d="M 4 0 L 0 0 0 4" fill="none" stroke="var(--grid-stroke)" strokeWidth=".15" />
             </pattern>
           </defs>
           <rect width="100" height="100" fill="url(#lg)" />

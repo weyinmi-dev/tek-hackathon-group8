@@ -19,6 +19,17 @@
   --ok:        #00e5a0;
   --mono:      'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --sans:      'Geist', ui-sans-serif, system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+
+  /* Theme-aware backgrounds for the login hero panel and the network map.
+     Hardcoded dark gradients in those components rendered dark text on a
+     dark background in light mode (invisible); these tokens swap with the
+     theme so contrast holds in both. */
+  --bg-hero: radial-gradient(ellipse at 30% 70%, #0d1525 0%, #06080d 70%);
+  --bg-map:  radial-gradient(ellipse at 50% 60%, #0c1220 0%, #06080d 70%);
+  --grid-stroke:      rgba(255,255,255,.04);
+  --map-shape-stroke: rgba(255,255,255,.06);
+  --map-overlay-bg:     rgba(10,14,22,.7);
+  --map-overlay-shadow: 0 8px 24px rgba(0,0,0,.5);
 }
 
 body.theme-light {
@@ -35,6 +46,13 @@ body.theme-light {
   --accent:    #0e8b62;
   --accent-dim: rgba(14,139,98,.10);
   --accent-line: rgba(14,139,98,.28);
+
+  --bg-hero: radial-gradient(ellipse at 30% 70%, #e8ede6 0%, #f6f5f0 70%);
+  --bg-map:  radial-gradient(ellipse at 50% 60%, #ecefe7 0%, #f1efe8 70%);
+  --grid-stroke:      rgba(0,0,0,.06);
+  --map-shape-stroke: rgba(0,0,0,.08);
+  --map-overlay-bg:     rgba(255,255,255,.85);
+  --map-overlay-shadow: 0 8px 24px rgba(0,0,0,.10);
 }
 
 * { box-sizing: border-box; }
