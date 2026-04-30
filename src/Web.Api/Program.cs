@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text;
+using System.Text.Json.Serialization;
 using Application;
 using HealthChecks.UI.Client;
 using Infrastructure;
@@ -37,6 +38,13 @@ builder.Services.AddCors(opts => opts.AddDefaultPolicy(p => p
     .AllowAnyHeader()
     .AllowAnyMethod()
     .AllowCredentials()));
+
+// Serialize all enums on the wire as their string names (e.g. "LocalUpload",
+// "EngineeringSop") instead of their underlying integer values. Otherwise
+// DocumentListItem.Source / Category come out as 0 / 3 in the documents UI,
+// and any future enum DTO would silently inherit the same bug.
+builder.Services.ConfigureHttpJsonOptions(opts =>
+    opts.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>

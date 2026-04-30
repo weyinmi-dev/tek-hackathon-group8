@@ -205,7 +205,11 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentStorageProvider, AzureBlobDocumentStorageProvider>();
 
         services.AddSingleton<IDocumentStorageRegistry, DocumentStorageRegistry>();
-        services.AddSingleton<IDocumentTextExtractor, PlainTextDocumentExtractor>();
+        // DefaultDocumentTextExtractor dispatches on content type (PDF / text / unsupported).
+        // The old plain-text-only extractor silently turned PDFs into garbage — see the
+        // class comment for the full story. Singleton is fine; it's stateless apart from
+        // the injected logger.
+        services.AddSingleton<IDocumentTextExtractor, DefaultDocumentTextExtractor>();
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
     }
 

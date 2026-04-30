@@ -12,6 +12,31 @@
 # Demo login:  oluwaseun.a@telco.lag  /  Telco!2025
 
 services:
+  # Aspire dashboard — local OTLP receiver + log/trace/metric viewer.
+  # Same dashboard you get from `dotnet run --project src/AppHost`, just running
+  # standalone so the docker-compose stack has parity.
+  #   UI:        http://localhost:18888
+  #   OTLP gRPC: 18889 (internal-only — backend pushes telemetry here)
+  #   OTLP HTTP: 18890 (alternate push path)
+  # AllowAnonymous is a dev-only convenience; without it the dashboard generates
+  # a random sign-in token on each start and prints it to its own logs. Don't run
+  # this configuration anywhere reachable from the internet.
+  aspire-dashboard:
+    image: mcr.microsoft.com/dotnet/aspire-dashboard:9.0
+    container_name: telcopilot.aspire-dashboard
+    hostname: aspire-dashboard
+    environment:
+      - DOTNET_DASHBOARD_UNSECURED_ALLOW_ANONYMOUS=true
+      - ASPIRE_DASHBOARD_OTLP_ENDPOINT_URL=http://0.0.0.0:18889
+      - ASPIRE_DASHBOARD_OTLP_HTTP_ENDPOINT_URL=http://0.0.0.0:18890
+    ports:
+      - "18888:18888"
+    expose:
+      - "18889"
+      - "18890"
+    networks: [tekhack-net]
+    restart: unless-stopped
+
   nginx:
     image: nginx:1.27-alpine
     container_name: telcopilot.nginx
@@ -65,12 +90,22 @@ services:
       - Ai__Rag__EmbeddingDimensions=${AI_RAG_EMBEDDING_DIMENSIONS:-1536}
       # Document storage — local-disk provider root (mounted from a named volume below).
       - Ai__Documents__LocalRoot=/var/telcopilot/documents
+      # OpenTelemetry — point at the Aspire dashboard's OTLP gRPC ingestion port.
+      # ServiceDefaults.ConfigureOpenTelemetry() auto-enables UseOtlpExporter() when
+      # OTEL_EXPORTER_OTLP_ENDPOINT is set, so traces / metrics / logs flow as soon
+      # as the dashboard container is up.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://aspire-dashboard:18889
+      - OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+      - OTEL_SERVICE_NAME=web-api
+      - OTEL_RESOURCE_ATTRIBUTES=service.namespace=telcopilot,service.instance.id=backend
     volumes:
       - telcopilot-doc-store:/var/telcopilot/documents
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_started
+      aspire-dashboard:
         condition: service_started
     networks: [tekhack-net]
     restart: unless-stopped

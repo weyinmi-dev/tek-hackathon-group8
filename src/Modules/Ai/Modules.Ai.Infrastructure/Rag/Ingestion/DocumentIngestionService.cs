@@ -37,8 +37,8 @@ internal sealed class DocumentIngestionService(
 
             if (string.IsNullOrWhiteSpace(body))
             {
-                doc.MarkFailed("Extractor returned empty text.");
-                await uow.SaveChangesAsync(cancellationToken);
+                doc.MarkFailed("Extractor returned empty text — the document may be a scanned image or otherwise contain no extractable text layer.");
+                await uow.SaveChangesAsync(CancellationToken.None);
                 return new IndexResult(0, 0);
             }
 
@@ -72,7 +72,12 @@ internal sealed class DocumentIngestionService(
         {
             logger.LogError(ex, "Ingestion failed for {DocumentId}", managedDocumentId);
             doc.MarkFailed(ex.Message);
-            await uow.SaveChangesAsync(cancellationToken);
+            // Persist the failure with CancellationToken.None — if the request token was
+            // cancelled (e.g. operator closed the upload modal mid-ingest), the original
+            // SaveChanges would have thrown OperationCanceledException and the document
+            // would be stranded at InProgress forever. The MarkFailed write itself is fast
+            // enough that an unconditional save is safe here.
+            await uow.SaveChangesAsync(CancellationToken.None);
             throw;
         }
     }
