@@ -1,24 +1,30 @@
 "use client";
 
-import { Suspense } from "react";
-import { useSearchParams } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { Copilot } from "@/components/Copilot";
 import { ConversationsSidebar } from "@/components/ConversationsSidebar";
 
-function CopilotInner() {
-  const params = useSearchParams();
-  const q = params.get("q") ?? undefined;
-  return <Copilot initialQuery={q} />;
-}
-
 export default function CopilotPage() {
   return (
     <>
-      <TopBar title="Copilot" sub="Natural language interface · Azure OpenAI + Semantic Kernel · 3 active skills" />
-      <Suspense fallback={null}>
-        <CopilotInner />
-      </Suspense>
+      <TopBar
+        title="Copilot"
+        sub="Natural language interface · sessions persisted to Postgres · auto-resume on refresh"
+      />
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "260px 1fr",
+          flex: 1,
+          minHeight: 0,
+          height: "100%",
+        }}
+      >
+        <ConversationsSidebar />
+        <div style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+          <Copilot />
+        </div>
+      </div>
     </>
   );
 }
