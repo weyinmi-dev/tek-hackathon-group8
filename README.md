@@ -10,19 +10,27 @@ A modular-monolith .NET 10 backend, a Next.js 15 (TypeScript) frontend, Semantic
 
 ## What it is
 
-| | |
-|---|---|
-| **Architecture** | Modular monolith — one backend deployable, in-process MediatR + domain events. No HTTP between modules. |
-| **Backend** | .NET 10 · ASP.NET Core minimal APIs · EF Core 10 (Postgres) · Redis cache · MediatR · Serilog · JWT |
-| **AI** | Microsoft Semantic Kernel + Azure OpenAI (with deterministic Mock fallback) |
-| **Frontend** | Next.js 15 · App Router · TypeScript · React 19 |
-| **Gateway** | NGINX (single backend upstream — modular monolith stays one logical service) |
-| **Local orchestration** | .NET Aspire AppHost + user-secrets |
-| **Containerized** | 5 services: nginx · frontend · backend · postgres · redis |
+|                         |                                                                                                         |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| **Architecture**        | Modular monolith — one backend deployable, in-process MediatR + domain events. No HTTP between modules. |
+| **Backend**             | .NET 10 · ASP.NET Core minimal APIs · EF Core 10 (Postgres) · Redis cache · MediatR · Serilog · JWT     |
+| **AI**                  | Microsoft Semantic Kernel + Azure OpenAI (with deterministic Mock fallback)                             |
+| **Frontend**            | Next.js 15 · App Router · TypeScript · React 19                                                         |
+| **Gateway**             | NGINX (single backend upstream — modular monolith stays one logical service)                            |
+| **Local orchestration** | .NET Aspire AppHost + user-secrets                                                                      |
+| **Containerized**       | 5 services: nginx · frontend · backend · postgres · redis                                               |
 
 ---
 
-## Quick start (Docker)
+## Quick start (Aspire - Dev Mode)
+
+Enter in the root solution folder
+
+```bash
+          aspire run
+```
+
+## Quick start (Docker - Production Mode)
 
 ```bash
 cp .env.example .env                # tweak secrets if you want
@@ -32,12 +40,12 @@ open http://localhost               # → /login
 
 **Demo logins** (any of the 8 seeded users — all share the demo password):
 
-| Email                       | Role     | What you can do                                              |
-|-----------------------------|----------|--------------------------------------------------------------|
-| `oluwaseun.a@telco.lag`     | engineer | Copilot, map, alerts read + ack, dashboard                   |
-| `amaka.o@telco.lag`         | manager  | + users, audit log, assign incidents                         |
-| `tunde.b@telco.lag`         | admin    | full access                                                  |
-| `kemi.a@telco.lag`          | viewer   | read-only dashboard, alerts, map                             |
+| Email                   | Role     | What you can do                            |
+| ----------------------- | -------- | ------------------------------------------ |
+| `oluwaseun.a@telco.lag` | engineer | Copilot, map, alerts read + ack, dashboard |
+| `amaka.o@telco.lag`     | manager  | + users, audit log, assign incidents       |
+| `tunde.b@telco.lag`     | admin    | full access                                |
+| `kemi.a@telco.lag`      | viewer   | read-only dashboard, alerts, map           |
 
 Password for all demo users: **`Telco!2025`**
 
@@ -47,18 +55,18 @@ Password for all demo users: **`Telco!2025`**
 
 All endpoints live behind a single NGINX upstream — every module shares the `/api/*` prefix.
 
-| Method | Path                        | Module    | Auth         |
-|-------:|-----------------------------|-----------|--------------|
-| POST   | `/api/auth/login`           | Identity  | anonymous    |
-| POST   | `/api/auth/refresh`         | Identity  | anonymous    |
-| GET    | `/api/auth/me`              | Identity  | Bearer       |
-| GET    | `/api/auth/users`           | Identity  | manager+     |
-| POST   | `/api/chat`                 | AI        | engineer+    |
-| GET    | `/api/metrics`              | Analytics | Bearer       |
-| GET    | `/api/metrics/audit`        | Analytics | manager+     |
-| GET    | `/api/alerts?severity=…`    | Alerts    | Bearer       |
-| POST   | `/api/alerts/{id}/ack`      | Alerts    | engineer+    |
-| GET    | `/api/map`                  | Network   | Bearer       |
+| Method | Path                     | Module    | Auth      |
+| -----: | ------------------------ | --------- | --------- |
+|   POST | `/api/auth/login`        | Identity  | anonymous |
+|   POST | `/api/auth/refresh`      | Identity  | anonymous |
+|    GET | `/api/auth/me`           | Identity  | Bearer    |
+|    GET | `/api/auth/users`        | Identity  | manager+  |
+|   POST | `/api/chat`              | AI        | engineer+ |
+|    GET | `/api/metrics`           | Analytics | Bearer    |
+|    GET | `/api/metrics/audit`     | Analytics | manager+  |
+|    GET | `/api/alerts?severity=…` | Alerts    | Bearer    |
+|   POST | `/api/alerts/{id}/ack`   | Alerts    | engineer+ |
+|    GET | `/api/map`               | Network   | Bearer    |
 
 Swagger at <http://localhost/swagger> in development.
 
@@ -115,6 +123,7 @@ Each module owns its own Postgres schema (`identity`, `network`, `alerts`, `anal
 ### Pipeline behaviors
 
 The shared MediatR pipeline (in `src/Application`) wraps every command/query with:
+
 1. `ExceptionHandlingPipelineBehavior` — log + rethrow
 2. `RequestLoggingPipelineBehavior` — Serilog enrichment
 3. `ValidationPipelineBehavior` — FluentValidation if a validator is registered
@@ -152,10 +161,12 @@ ChatEndpoint  ──MediatR──►  AskCopilotCommandHandler
 ```
 
 The orchestrator is selected at startup via `Ai:Provider`:
+
 - `Mock` (default) — no Azure OpenAI required, still hits the real Network/Alerts modules
 - `AzureOpenAi` — full Semantic Kernel with auto function-calling against the three skills
 
 Switch providers without redeploying:
+
 ```bash
 # Aspire (local dev with user-secrets):
 dotnet user-secrets --project src/AppHost set "Ai:Provider"               "AzureOpenAi"
@@ -169,28 +180,25 @@ echo "AZURE_OPENAI_ENDPOINT=https://<your>.openai.azure.com/" >> .env
 echo "AZURE_OPENAI_API_KEY=<key>"                         >> .env
 docker compose up -d --force-recreate backend
 ```
+
 ### AI Output and Observability
 
 The Copilot returns structured responses including:
 
-- Answer → generated insight  
-- Confidence score → reliability of the response  
-- Skill trace → sequence of executed skills  
-- Provider → AI engine used  
+- Answer → generated insight
+- Confidence score → reliability of the response
+- Skill trace → sequence of executed skills
+- Provider → AI engine used
 
 All interactions are logged and persisted for audit and analytics purposes.
 
-
 ---
-###  context awareness 
+
+### context awareness
 
 Each query includes user identity and role, enabling the system to generate context-aware responses tailored to different operational roles (e.g., Engineer vs Manager).
 
-
 ---
-
-
-
 
 ---
 
@@ -306,10 +314,10 @@ The frontend contains a feature-based architecture under `app/authed`, represent
 
 ###  Frontend Data Flow
 
-User Input  
-→ UI Components  
-→ API Client  
-→ Backend API (`/api/*`)  
+User Input
+→ UI Components
+→ API Client
+→ Backend API (`/api/*`)
 → Response Rendered in UI
 
 ---
