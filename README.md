@@ -24,11 +24,77 @@ A modular-monolith .NET 10 backend, a Next.js 15 (TypeScript) frontend, Semantic
 
 ## Quick start (Aspire - Dev Mode)
 
-Enter in the root solution folder
+Aspire boots the whole stack — Postgres (pgvector), Redis, pgAdmin, the .NET Web.Api, and the Next.js frontend — from a single command. No NGINX in dev; Next.js rewrites `/api/*` to the backend.
+
+### Prerequisites
+
+| Tool                          | Why                                                                          |
+| ----------------------------- | ---------------------------------------------------------------------------- |
+| **.NET SDK 10**               | AppHost and all backend projects target `net10.0`.                           |
+| **Docker Desktop (running)**  | Aspire launches Postgres, Redis, and pgAdmin as containers.                  |
+| **Node.js 22+ and npm**       | Aspire runs `next dev` for the frontend.                                     |
+| **(optional) Aspire CLI**     | Lets you use `aspire run` instead of `dotnet run --project src/AppHost`.     |
+
+### One-time setup
+
+From the repo root:
 
 ```bash
-          aspire run
+# Frontend deps (next dev needs node_modules)
+cd frontend && npm install --legacy-peer-deps && cd ..
+
+# AppHost user-secrets
+dotnet user-secrets --project src/AppHost init
+dotnet user-secrets --project src/AppHost set "Jwt:Secret" "<32+char-random-string>"
 ```
+
+The AI module defaults to the deterministic **Mock** provider (no Azure OpenAI required). To switch to real Azure OpenAI:
+
+```bash
+dotnet user-secrets --project src/AppHost set "Ai:Provider"               "AzureOpenAi"
+dotnet user-secrets --project src/AppHost set "Ai:AzureOpenAi:Endpoint"   "https://<your>.openai.azure.com/"
+dotnet user-secrets --project src/AppHost set "Ai:AzureOpenAi:ApiKey"     "<key>"
+dotnet user-secrets --project src/AppHost set "Ai:AzureOpenAi:Deployment" "gpt-4o-mini"
+```
+
+### Run
+
+From the repo root:
+
+```bash
+dotnet run --project src/AppHost
+# or, with the Aspire CLI installed:
+aspire run
+```
+
+### What's running and where
+
+| Resource          | Where                              | Port                |
+| ----------------- | ---------------------------------- | ------------------- |
+| Aspire dashboard  | local                              | `https://localhost:17017` |
+| Frontend (Next.js)| local `npm run dev`                | `3000`              |
+| Web.Api (.NET)    | local process, hot-reload          | dynamic (see dashboard) |
+| Postgres (pgvector/pg17) | container, persistent volume | `5723`              |
+| pgAdmin           | container                          | `5055`              |
+| Redis             | container, persistent volume       | `6379`              |
+
+Open the app at **http://localhost:3000** and log in with any seeded demo user below. The Aspire dashboard at **https://localhost:17017** gives you logs, traces, metrics, and direct links to each resource.
+
+### Persistence and cleanup
+
+Postgres and Redis use `ContainerLifetime.Persistent` with named volumes, so data — including the seeded RAG corpus and audit log — survives `Ctrl+C` and host reboots. To wipe everything:
+
+```bash
+docker rm -f $(docker ps -aq --filter "name=postgres") $(docker ps -aq --filter "name=redis")
+docker volume rm telcopilot-pg-data-aspire telcopilot-redis-data-aspire
+```
+
+### Common gotchas
+
+- **Docker not running** → AppHost crashes immediately. Start Docker Desktop first.
+- **Port 3000 already in use** → `next dev` binds directly (`isProxied: false` in the AppHost). Free the port rather than changing it.
+- **Frontend peer-dep errors** → re-run `npm install --legacy-peer-deps`.
+- **`Jwt:Secret` missing** → login still works against an insecure dev fallback, but you'll see warnings. Set the secret.
 
 ## Quick start (Docker - Production Mode)
 
