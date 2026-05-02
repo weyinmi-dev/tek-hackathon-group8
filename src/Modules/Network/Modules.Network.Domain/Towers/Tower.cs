@@ -72,6 +72,28 @@ public sealed class Tower : Entity
         Issue = issue;
         UpdatedAtUtc = DateTime.UtcNow;
     }
+
+    public bool UpdatePowerMetrics(PowerSource activePowerSource, double newFuelLevelLiters)
+    {
+        // Detect sudden unnatural drops (e.g. > 50 liters drop between readings)
+        bool isTheftDetected = false;
+        
+        if (ActivePowerSource == PowerSource.Generator && (FuelLevelLiters - newFuelLevelLiters) > 50)
+        {
+            isTheftDetected = true;
+        }
+        else if (ActivePowerSource != PowerSource.Generator && (FuelLevelLiters - newFuelLevelLiters) > 10)
+        {
+            // If generator is OFF, fuel shouldn't drop at all
+            isTheftDetected = true;
+        }
+
+        ActivePowerSource = activePowerSource;
+        FuelLevelLiters = newFuelLevelLiters;
+        UpdatedAtUtc = DateTime.UtcNow;
+
+        return isTheftDetected;
+    }
 }
 
 public interface ITowerRepository
