@@ -26,10 +26,21 @@ def main():
     print(f"Starting IoT Sensor Simulation for {args.tower}...")
     current_fuel = args.start_fuel
 
+    print("Press 'Ctrl+C' to stop. Press 'Enter' in another terminal to trigger theft (not supported directly in basic loop, so we will use a probability for the demo, or wait for 5 readings).")
+    
+    counter = 0
     try:
         while True:
-            # Normal burn rate: ~1 liter per minute (simulated fast for demo)
+            # Normal burn rate: ~1 liter per minute
             burn = random.uniform(0.5, 1.5)
+            
+            # TRIGGER THEFT: Every 10th reading, simulate a huge drain of 100 Liters!
+            counter += 1
+            if counter == 10:
+                print("🚨 SIMULATING THEFT! Draining 100 Liters instantly...")
+                burn = 100.0
+                counter = 0 # reset
+                
             current_fuel -= burn
             
             if current_fuel < 0:
@@ -37,7 +48,6 @@ def main():
 
             send_reading(args.tower, 1, current_fuel) # 1 = Generator
 
-            # Pause to wait for next reading
             time.sleep(5)
             
     except KeyboardInterrupt:
