@@ -1,4 +1,5 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -14,7 +15,7 @@ public sealed class RecordFuelReadingEndpoint : IEndpoint
 {
     public void MapEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapPost("towers/{code}/fuel", async (
+        app.MapPost("towers/{code}/fuel", [Authorize] async (
             string code,
             [FromBody] Request request,
             ISender sender,
@@ -30,8 +31,6 @@ public sealed class RecordFuelReadingEndpoint : IEndpoint
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
         .WithTags("Towers")
-        .RequireAuthorization()
-        .MapToApiVersion(1)
         .WithName("RecordFuelReading")
         .WithSummary("Record an IoT fuel sensor reading")
         .WithDescription("Updates the live fuel and power metrics for a specified tower and triggers anomaly detection logic.");
