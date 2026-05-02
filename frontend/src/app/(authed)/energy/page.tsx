@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { observer } from "mobx-react-lite";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, KPI, Pill, Section } from "@/components/UI";
+import { GeoBadge } from "@/components/GeoBadge";
 import { SiteDieselChart } from "@/components/EnergyCharts";
-import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { isEngineer } from "@/lib/rbac";
-import type { EnergyKpiDto, EnergySiteDto } from "@/lib/types";
+import { useEnergyStore } from "@/lib/stores/StoreProvider";
+import type { EnergyHealthFilter } from "@/lib/stores/EnergyStore";
+import type { EnergySiteDto } from "@/lib/types";
 
 const SRC_COLOR: Record<EnergySiteDto["source"], string> = {
   grid: "var(--info)",
@@ -22,100 +25,48 @@ const HEALTH_TONE: Record<EnergySiteDto["health"], "ok" | "warn" | "crit"> = {
   ok: "ok", degraded: "warn", critical: "crit",
 };
 
-type Filter = "all" | EnergySiteDto["health"];
-
 const KPI_COLORS = ["var(--accent)", "var(--accent)", "#f5d76e", "var(--info)", "var(--ok)", "var(--warn)"];
 
-export default function EnergyPage() {
-  const [sites, setSites] = useState<EnergySiteDto[]>([]);
-  const [kpis, setKpis] = useState<EnergyKpiDto[]>([]);
-  const [sel, setSel] = useState<EnergySiteDto | null>(null);
-  const [trace, setTrace] = useState<{ at: string; dieselPct: number }[]>([]);
-  const [filter, setFilter] = useState<Filter>("all");
-  const [busy, setBusy] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ id: string; msg: string } | null>(null);
+const EnergyPage = observer(function EnergyPage() {
+  const store = useEnergyStore();
   const { user } = useAuth();
   const canMutate = isEngineer(user?.role);
 
-  // Initial load + 30s refresh so the dashboards reflect ticker mutations.
-  async function refresh() {
-    const [s, k] = await Promise.all([api.energy.sites(), api.energy.kpis()]);
-    setSites(s.sites);
-    setKpis(k.kpis);
-    setSel((prev) => prev
-      ? (s.sites.find((x) => x.id === prev.id) ?? prev)
-      : (s.sites.find((x) => x.health === "critical") ?? s.sites[0] ?? null));
-  }
+  // Mount: kick off the 30s polling cycle. Unmount: stop the timer (the store
+  // keeps its persisted filter / selection — only the network loop pauses).
   useEffect(() => {
-    void refresh();
-    const id = setInterval(() => void refresh(), 30_000);
-    return () => clearInterval(id);
-  }, []);
+    store.startAutoRefresh();
+    return () => store.stopAutoRefresh();
+  }, [store]);
 
-  // Load the selected site's diesel trace whenever the selection changes.
+  // Refresh the diesel trace whenever the persisted selection changes — this
+  // covers tab-switch-back, where the store may have a selection but no trace.
   useEffect(() => {
-    if (!sel) { setTrace([]); return; }
-    let alive = true;
-    api.energy.siteDieselTrace(sel.id, 24).then((r) => {
-      if (alive) setTrace(r.points);
-    }).catch(() => { if (alive) setTrace([]); });
-    return () => { alive = false; };
-  }, [sel?.id]);
+    if (store.selectedId) void store.loadTrace(store.selectedId);
+  }, [store, store.selectedId]);
 
-  const list = filter === "all" ? sites : sites.filter((s) => s.health === filter);
-  const counts = {
-    ok: sites.filter((s) => s.health === "ok").length,
-    degraded: sites.filter((s) => s.health === "degraded").length,
-    critical: sites.filter((s) => s.health === "critical").length,
-  };
-
-  function flash(id: string, msg: string) {
-    setToast({ id, msg });
-    setTimeout(() => setToast((cur) => cur?.id === id ? null : cur), 2400);
-  }
-
-  async function switchSource(target: EnergySiteDto["source"]) {
-    if (!sel) return;
-    setBusy("switch");
-    try {
-      await api.energy.switchSource(sel.id, target);
-      await refresh();
-      flash(sel.id, `Source switched to ${target.toUpperCase()}`);
-    } catch (e) {
-      flash(sel.id, e instanceof Error ? e.message : "Switch failed");
-    } finally { setBusy(null); }
-  }
-
-  async function dispatchRefuel() {
-    if (!sel) return;
-    setBusy("refuel");
-    try {
-      const r = await api.energy.refuel(sel.id, 60);
-      await refresh();
-      flash(sel.id, `Refuelled +${r.pctChange}% (now ${r.dieselPctAfter}%)`);
-    } catch (e) {
-      flash(sel.id, e instanceof Error ? e.message : "Refuel failed");
-    } finally { setBusy(null); }
-  }
+  const sel = store.selected;
+  const list = store.visible;
+  const counts = store.counts;
 
   return (
     <>
       <TopBar
         title="Energy Sites"
-        sub={`${sites.length} active sites · grid + diesel + battery + solar orchestration`}
+        sub={`${store.sites.length} active sites · grid + diesel + battery + solar orchestration`}
         right={
           <div style={{ display: "flex", gap: 6, padding: 3, background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 7 }}>
             {([
-              ["all", "All", sites.length],
+              ["all", "All", store.sites.length],
               ["critical", "Critical", counts.critical],
               ["degraded", "Degraded", counts.degraded],
               ["ok", "Healthy", counts.ok],
             ] as const).map(([k, l, n]) => (
-              <button key={k} onClick={() => setFilter(k as Filter)} style={{
+              <button key={k} onClick={() => store.setFilter(k as EnergyHealthFilter)} style={{
                 appearance: "none", border: 0, padding: "5px 12px", borderRadius: 5,
                 fontSize: 11, fontWeight: 500,
-                background: filter === k ? "var(--bg-3)" : "transparent",
-                color: filter === k ? "var(--ink)" : "var(--ink-3)",
+                background: store.filter === k ? "var(--bg-3)" : "transparent",
+                color: store.filter === k ? "var(--ink)" : "var(--ink-3)",
                 cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
               }}>
                 {l} <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-3)" }}>{n}</span>
@@ -126,7 +77,7 @@ export default function EnergyPage() {
       />
       <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10 }}>
-          {kpis.map((k, i) => (
+          {store.kpis.map((k, i) => (
             <KPI key={k.label} {...k} color={KPI_COLORS[i] ?? "var(--accent)"} />
           ))}
         </div>
@@ -145,7 +96,7 @@ export default function EnergyPage() {
               {list.map((s, i) => {
                 const active = sel?.id === s.id;
                 return (
-                  <button key={s.id} onClick={() => setSel(s)} style={{
+                  <button key={s.id} onClick={() => store.setSelected(s.id)} style={{
                     appearance: "none", width: "100%", textAlign: "left", cursor: "pointer",
                     padding: "12px 14px", borderBottom: i < list.length - 1 ? "1px solid var(--line)" : 0,
                     display: "grid", gridTemplateColumns: "1.6fr 90px 60px 1fr 1fr 90px 80px", gap: 10,
@@ -155,10 +106,12 @@ export default function EnergyPage() {
                   }}>
                     <div>
                       <div className="mono" style={{ fontSize: 10, color: "var(--accent)", marginBottom: 2 }}>{s.id}</div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span style={{ fontWeight: 500 }}>{s.name}</span>
                         <span style={{ color: "var(--ink-3)", fontSize: 11 }}>· {s.region}</span>
                         {s.solar && <span style={{ fontSize: 11, color: "#f5d76e" }}>☼</span>}
+                        {/* Compact OSM badge keeps the row dense — region pill + fuel distance only. */}
+                        <GeoBadge geo={s.geo} compact />
                       </div>
                     </div>
                     <SourceTag src={s.source} />
@@ -196,6 +149,11 @@ export default function EnergyPage() {
                   </div>
                   <Pill tone={HEALTH_TONE[sel.health]} dot>{sel.health}</Pill>
                 </div>
+                {sel.geo && (
+                  <div style={{ marginBottom: 10 }}>
+                    <GeoBadge geo={sel.geo} />
+                  </div>
+                )}
                 {sel.anomaly && (
                   <div style={{
                     padding: 10, background: "var(--bg-3)", borderRadius: 6,
@@ -208,7 +166,7 @@ export default function EnergyPage() {
                 <div className="mono uppr" style={{ fontSize: 9.5, color: "var(--ink-3)", letterSpacing: ".14em", marginTop: 4, marginBottom: 8 }}>
                   POWER MIX · NOW
                 </div>
-                <PowerMixBar src={sel.source} onSwitch={canMutate ? switchSource : undefined} disabled={busy !== null} />
+                <PowerMixBar src={sel.source} onSwitch={canMutate ? (t) => void store.switchSource(t) : undefined} disabled={store.busy !== null} />
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
                   <Metric label="BATTERY" v={sel.battPct} unit="%" tone={sel.battPct < 30 ? "crit" : sel.battPct < 60 ? "warn" : "ok"} />
                   <Metric label="DIESEL"  v={sel.dieselPct} unit="%" tone={sel.dieselPct < 20 ? "crit" : sel.dieselPct < 50 ? "warn" : "ok"} />
@@ -217,25 +175,25 @@ export default function EnergyPage() {
                 </div>
                 {canMutate && (
                   <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-                    <Btn primary small onClick={dispatchRefuel} disabled={busy !== null}>
-                      {busy === "refuel" ? "Dispatching…" : "Dispatch Refuel +60L"}
+                    <Btn primary small onClick={() => void store.dispatchRefuel(60)} disabled={store.busy !== null}>
+                      {store.busy === "refuel" ? "Dispatching…" : "Dispatch Refuel +60L"}
                     </Btn>
                   </div>
                 )}
-                {toast?.id === sel.id && (
+                {store.toast?.id === sel.id && (
                   <div className="mono" style={{
                     marginTop: 10, fontSize: 10.5, color: "var(--accent)",
                     padding: "6px 10px", background: "var(--accent-dim)",
                     border: "1px solid var(--accent-line)", borderRadius: 5,
                     letterSpacing: ".06em",
-                  }}>⌁ {toast.msg}</div>
+                  }}>⌁ {store.toast.msg}</div>
                 )}
               </Card>
 
               <Section label="24H DIESEL · LITERS">
                 <Card pad={14}>
-                  {trace.length > 0
-                    ? <BackendDieselChart points={trace} />
+                  {store.trace.length > 0
+                    ? <BackendDieselChart points={store.trace} />
                     : <SiteDieselChart pct={sel.dieselPct} health={sel.health} />}
                 </Card>
               </Section>
@@ -245,7 +203,9 @@ export default function EnergyPage() {
       </div>
     </>
   );
-}
+});
+
+export default EnergyPage;
 
 function HealthDot({ h }: { h: EnergySiteDto["health"] }) {
   const c = h === "critical" ? "var(--crit)" : h === "degraded" ? "var(--warn)" : "var(--ok)";

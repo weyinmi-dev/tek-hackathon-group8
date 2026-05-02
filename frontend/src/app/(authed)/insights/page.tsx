@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { observer } from "mobx-react-lite";
 import { TopBar } from "@/components/TopBar";
 import { Bar, Card, Donut, KPI } from "@/components/UI";
-import { api } from "@/lib/api";
-import type { MetricsResponse } from "@/lib/types";
+import { useInsightsStore } from "@/lib/stores/StoreProvider";
 
 const SPARK_COLORS = ["var(--accent)", "var(--warn)", "var(--crit)", "var(--info)", "var(--crit)", "var(--accent)"];
 
-export default function DashboardPage() {
-  const [m, setM] = useState<MetricsResponse | null>(null);
-  useEffect(() => { api.metrics().then(setM); }, []);
+const DashboardPage = observer(function DashboardPage() {
+  const store = useInsightsStore();
+
+  // Mount: kick off the 30s refresh loop. The store cache survives the
+  // unmount so re-entering the page paints the previous data while the
+  // new fetch resolves — no flash of empty cards.
+  useEffect(() => {
+    store.startAutoRefresh();
+    return () => store.stopAutoRefresh();
+  }, [store]);
+
+  const m = store.metrics;
 
   const sparkBy = (i: number) => {
     if (!m) return [];
@@ -92,7 +101,9 @@ export default function DashboardPage() {
       </div>
     </>
   );
-}
+});
+
+export default DashboardPage;
 
 function BigChart({ series }: { series: { name: string; color: string; series: number[] }[] }) {
   const max = 160, W = 800, H = 180;

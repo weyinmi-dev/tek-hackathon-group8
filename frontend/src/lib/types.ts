@@ -44,6 +44,22 @@ export type MapResponse = {
   onlineTowers: number;
 };
 
+/**
+ * OSM-derived geo context attached to every site-keyed list item the API returns.
+ * Mirrors `Web.Api.Endpoints.Geo.GeoSummary`. `nearestFuelStationMetres` is null
+ * when no station was found within the 15km Overpass search radius. All fields
+ * are computed once per site per 24h cache TTL — safe to render directly.
+ */
+export type GeoSummary = {
+  latitude: number;
+  longitude: number;
+  regionType: "urban" | "suburban" | "rural" | "remote";
+  accessibilityScore: number;          // 0-100
+  nearestFuelStationMetres: number | null;
+  nearestFuelStationName: string | null;
+  address: string | null;
+};
+
 export type Alert = {
   id: string;
   sev: "critical" | "warn" | "info";
@@ -57,6 +73,7 @@ export type Alert = {
   time: string;
   assignedTeam: string | null;
   dispatchTarget: string | null;
+  geo: GeoSummary | null;
 };
 
 export type Kpi = {
@@ -257,6 +274,7 @@ export type EnergySiteDto = {
   solar: boolean;       // has solar at all?
   health: "ok" | "degraded" | "critical";
   anomaly: string | null;
+  geo: GeoSummary | null;
 };
 
 export type EnergyKpiDto = {
@@ -278,6 +296,7 @@ export type EnergyAnomalyDto = {
   conf: number;         // 0-1
   model: string;
   acknowledged: boolean;
+  geo: GeoSummary | null;
 };
 
 export type DieselTracePoint = { at: string; dieselPct: number; litresDelta: number };

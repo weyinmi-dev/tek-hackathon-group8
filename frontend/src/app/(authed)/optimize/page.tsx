@@ -1,43 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { observer } from "mobx-react-lite";
 import { TopBar } from "@/components/TopBar";
 import { Card, Pill, Section } from "@/components/UI";
-import { api } from "@/lib/api";
-import type { EnergyRecommendation, OptimizationProjection } from "@/lib/types";
+import { useOptimizeStore } from "@/lib/stores/StoreProvider";
 
-export default function OptimizePage() {
-  const [solar, setSolar] = useState(44);
-  const [diesel, setDiesel] = useState(900);
-  const [batt, setBatt] = useState(70);
-  const [proj, setProj] = useState<OptimizationProjection | null>(null);
-  const [recs, setRecs] = useState<EnergyRecommendation[]>([]);
+const OptimizePage = observer(function OptimizePage() {
+  const store = useOptimizeStore();
 
-  // Recompute projection whenever the sliders change. Debounce to avoid
-  // hammering the backend during a slider drag.
+  // The store recomputes the projection on every slider change via an autorun
+  // started in boot(); we just need to keep the recommendation poll running
+  // while the page is mounted. boot() already wired persistence + the
+  // projection autorun in <StoreProvider>, so this effect is purely about the
+  // 30s recommendation refresh — paused on unmount to avoid an idle network
+  // tick when the operator is on another tab.
   useEffect(() => {
-    const t = setTimeout(() => {
-      void api.energy
-        .optimization({ solarPct: solar, dieselPriceNgnPerLitre: diesel, batteryThresholdPct: batt })
-        .then(setProj)
-        .catch(() => { /* keep last known projection */ });
-    }, 200);
-    return () => clearTimeout(t);
-  }, [solar, diesel, batt]);
+    store.startRecommendationsRefresh();
+    return () => store.stopRecommendationsRefresh();
+  }, [store]);
 
-  // Recommendations are derived from current site state, not from sliders, so
-  // they only reload on mount + every 30s as the ticker mutates the fleet.
-  useEffect(() => {
-    async function load() {
-      try {
-        const r = await api.energy.recommendations();
-        setRecs(r.recommendations);
-      } catch { /* keep last list */ }
-    }
-    void load();
-    const id = setInterval(() => void load(), 30_000);
-    return () => clearInterval(id);
-  }, []);
+  const proj = store.projection;
+  const recs = store.recommendations;
 
   const baselineDaily = proj?.baselineDailyOpexMillionsNgn ?? 21.0;
   const optimizedDaily = proj?.optimizedDailyOpexMillionsNgn ?? 14.7;
@@ -54,9 +38,9 @@ export default function OptimizePage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Section label="SCENARIO INPUTS">
             <Card pad={16}>
-              <Slider label="Sites on solar"           value={solar}  unit="%"   min={20}  max={100}  onChange={setSolar} />
-              <Slider label="Diesel price"             value={diesel} unit="₦/L" min={700} max={1400} onChange={setDiesel} />
-              <Slider label="Battery switch threshold" value={batt}   unit="%"   min={30}  max={90}   onChange={setBatt} />
+              <Slider label="Sites on solar"           value={store.solar}  unit="%"   min={20}  max={100}  onChange={store.setSolar} />
+              <Slider label="Diesel price"             value={store.diesel} unit="₦/L" min={700} max={1400} onChange={store.setDiesel} />
+              <Slider label="Battery switch threshold" value={store.batt}   unit="%"   min={30}  max={90}   onChange={store.setBatt} />
             </Card>
           </Section>
 
@@ -127,7 +111,9 @@ export default function OptimizePage() {
       </div>
     </>
   );
-}
+});
+
+export default OptimizePage;
 
 function Slider({ label, value, unit, min, max, onChange }: {
   label: string; value: number; unit: string; min: number; max: number; onChange: (v: number) => void;
