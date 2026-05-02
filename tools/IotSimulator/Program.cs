@@ -19,11 +19,19 @@ class Program
         Console.WriteLine($"Starting C# IoT Sensor Simulation for {towerCode}...");
         Console.WriteLine("Press 'Ctrl+C' to stop.");
 
+        int counter = 0;
         while (true)
         {
-            // Normal burn rate: ~1 liter per interval
             double burn = rnd.NextDouble() + 0.5; // 0.5 to 1.5
             
+            counter++;
+            if (counter == 10)
+            {
+                Console.WriteLine("🚨 SIMULATING THEFT! Draining 100 Liters instantly...");
+                burn = 100.0;
+                counter = 0;
+            }
+
             currentFuel -= burn;
             if (currentFuel < 0) currentFuel = 0;
 
