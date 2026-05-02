@@ -3,6 +3,7 @@ using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Npgsql;
 using Modules.Ai.Application.Mcp.Clients;
@@ -24,6 +25,7 @@ using Modules.Ai.Domain.Documents;
 using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database;
 using Modules.Ai.Infrastructure.Mcp.Clients;
+using Modules.Ai.Infrastructure.Mcp.Osm;
 using Modules.Ai.Infrastructure.Mcp.Plugins;
 using Modules.Ai.Infrastructure.Mcp.Registry;
 using Modules.Ai.Infrastructure.Rag.Chunking;
@@ -82,8 +84,13 @@ public static class DependencyInjection
         services.AddScoped<IManagedDocumentRepository, ManagedDocumentRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+        // Bind AiOptions through IOptions so the OSM layer (and anything else that needs the
+        // sub-options) can consume it via constructor injection rather than re-binding the section.
+        services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
+
         AddRagPipeline(services, rag, configuration);
         AddDocumentPipeline(services, configuration);
+        AddOsmLayer(services, configuration);
         AddMcpPluginLayer(services);
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
@@ -109,6 +116,7 @@ public static class DependencyInjection
             services.AddScoped<KnowledgeSkill>();
             services.AddScoped<InternalToolsSkill>();
             services.AddScoped<EnergySkill>();
+            services.AddScoped<OsmSkill>();
 
             services.AddScoped<Kernel>(sp =>
             {
@@ -125,6 +133,7 @@ public static class DependencyInjection
                 k.Plugins.AddFromObject(sp.GetRequiredService<KnowledgeSkill>(),      nameof(KnowledgeSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<InternalToolsSkill>(),  nameof(InternalToolsSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<EnergySkill>(),         nameof(EnergySkill));
+                k.Plugins.AddFromObject(sp.GetRequiredService<OsmSkill>(),            nameof(OsmSkill));
                 return k;
             });
             services.AddScoped(sp => sp.GetRequiredService<Kernel>().GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
@@ -190,9 +199,52 @@ public static class DependencyInjection
         services.AddScoped<IMcpPlugin, NetworkMcpPlugin>();
         services.AddScoped<IMcpPlugin, AlertsMcpPlugin>();
         services.AddScoped<IMcpPlugin, EnergyMcpPlugin>();
+        services.AddScoped<IMcpPlugin, OsmMcpPlugin>();
 
         services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
         services.AddScoped<IMcpInvoker, McpInvoker>();
+    }
+
+    /// <summary>
+    /// OpenStreetMap geospatial layer. Wraps the same public APIs the upstream
+    /// <see href="https://github.com/jagan-shanmugam/open-streetmap-mcp">jagan-shanmugam OSM MCP server</see>
+    /// uses (Nominatim + Overpass) but in-process, so we don't need a Python sidecar.
+    ///
+    /// HttpClient is registered through <see cref="IHttpClientFactory"/> so socket reuse,
+    /// retries, and resilience handlers can be added later without touching the client.
+    /// The cached decorator (<see cref="CachedOsmClient"/>) is what consumers receive — it
+    /// fronts every primitive call with Redis so identical (lat, lon[, radius]) inputs hit
+    /// the cache instead of OSM. <see cref="ISiteGeoLookup"/> bridges site-code → coordinates
+    /// using the Network module's tower data, then composes the OSM-derived attributes
+    /// (region type, accessibility score, nearest fuel station) per the directive's
+    /// "compute once, reuse" rule.
+    /// </summary>
+    private static void AddOsmLayer(IServiceCollection services, IConfiguration configuration)
+    {
+        OsmOptions osm = configuration.GetSection($"{AiOptions.SectionName}:Osm").Get<OsmOptions>() ?? new OsmOptions();
+
+        services.AddHttpClient<OsmClient>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(Math.Max(5, osm.TimeoutSeconds));
+            // OSM's tile / Nominatim usage policy REQUIRES a descriptive UA — anonymous
+            // requests are throttled or blocked. Operators should set a contact email per
+            // deployment via Ai:Osm:UserAgent.
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(osm.UserAgent);
+            client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+        });
+
+        // OsmClient is the underlying transport; consumers get the cached decorator. Both
+        // share the same HttpClient registered above (the cached layer simply delegates).
+        services.AddScoped<IOsmClient>(sp =>
+        {
+            OsmClient inner = sp.GetRequiredService<OsmClient>();
+            return new CachedOsmClient(
+                inner,
+                sp.GetRequiredService<global::Application.Abstractions.Caching.ICacheService>(),
+                sp.GetRequiredService<IOptions<AiOptions>>());
+        });
+
+        services.AddScoped<ISiteGeoLookup, SiteGeoLookup>();
     }
 
     private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration)
