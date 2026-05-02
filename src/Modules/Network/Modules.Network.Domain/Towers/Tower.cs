@@ -73,6 +73,12 @@ public sealed class Tower : Entity
         UpdatedAtUtc = DateTime.UtcNow;
     }
 
+    /// <summary>
+    /// Updates the power source and fuel metrics for this tower, and detects anomalous fuel drops indicating theft.
+    /// </summary>
+    /// <param name="activePowerSource">The power source currently driving the tower.</param>
+    /// <param name="newFuelLevelLiters">The new fuel reading from the IoT sensor.</param>
+    /// <returns>True if a critical theft is detected; otherwise false.</returns>
     public bool UpdatePowerMetrics(PowerSource activePowerSource, double newFuelLevelLiters)
     {
         // Detect sudden unnatural drops (e.g. > 50 liters drop between readings)
