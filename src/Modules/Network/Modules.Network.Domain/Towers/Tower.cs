@@ -77,12 +77,13 @@ public sealed class Tower : Entity
     {
         // Detect sudden unnatural drops (e.g. > 50 liters drop between readings)
         bool isTheftDetected = false;
+        double oldFuelLevel = FuelLevelLiters;
         
-        if (ActivePowerSource == PowerSource.Generator && (FuelLevelLiters - newFuelLevelLiters) > 50)
+        if (ActivePowerSource == PowerSource.Generator && (oldFuelLevel - newFuelLevelLiters) > 50)
         {
             isTheftDetected = true;
         }
-        else if (ActivePowerSource != PowerSource.Generator && (FuelLevelLiters - newFuelLevelLiters) > 10)
+        else if (ActivePowerSource != PowerSource.Generator && (oldFuelLevel - newFuelLevelLiters) > 10)
         {
             // If generator is OFF, fuel shouldn't drop at all
             isTheftDetected = true;
@@ -91,6 +92,11 @@ public sealed class Tower : Entity
         ActivePowerSource = activePowerSource;
         FuelLevelLiters = newFuelLevelLiters;
         UpdatedAtUtc = DateTime.UtcNow;
+
+        if (isTheftDetected)
+        {
+            Raise(new Modules.Network.Domain.Towers.Events.FuelTheftDetectedDomainEvent(Id, Code, oldFuelLevel, newFuelLevelLiters));
+        }
 
         return isTheftDetected;
     }
