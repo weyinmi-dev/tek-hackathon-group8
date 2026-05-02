@@ -45,13 +45,24 @@ public sealed class Tower : Entity
     public int LoadPct { get; private set; }
     public TowerStatus Status { get; private set; }
     public string? Issue { get; private set; }
+    public PowerSource ActivePowerSource { get; private set; }
+    public double FuelLevelLiters { get; private set; }
+    public double FuelCapacityLiters { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
     public static Tower Create(
         string code, string name, string region,
         double latitude, double longitude, double mapX, double mapY,
-        int signalPct, int loadPct, TowerStatus status, string? issue)
-        => new(Guid.NewGuid(), code, name, region, latitude, longitude, mapX, mapY, signalPct, loadPct, status, issue);
+        int signalPct, int loadPct, TowerStatus status, string? issue,
+        PowerSource activePowerSource = PowerSource.Grid,
+        double fuelLevelLiters = 0, double fuelCapacityLiters = 1000)
+    {
+        var tower = new Tower(Guid.NewGuid(), code, name, region, latitude, longitude, mapX, mapY, signalPct, loadPct, status, issue);
+        tower.ActivePowerSource = activePowerSource;
+        tower.FuelLevelLiters = fuelLevelLiters;
+        tower.FuelCapacityLiters = fuelCapacityLiters;
+        return tower;
+    }
 
     public void UpdateMetrics(int signalPct, int loadPct, TowerStatus status, string? issue)
     {
