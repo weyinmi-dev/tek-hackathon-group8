@@ -33,21 +33,41 @@ export class OptimizeStore {
   private _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
-    makeAutoObservable(this, {}, { autoBind: true });
+    // The private dispose handles and timer ids must NOT be observable: the
+    // recompute autorun below both reads and writes _debounceTimer on every
+    // slider change. If MobX tracks that field, each setTimeout assignment
+    // re-fires the autorun → "Reaction doesn't converge after 100 iterations".
+    makeAutoObservable(
+      this,
+      {
+        _disposePersist: false,
+        _disposeRecompute: false,
+        _refreshTimer: false,
+        _debounceTimer: false,
+      } as any,
+      { autoBind: true },
+    );
   }
 
   boot(): void {
     if (this.hasHydrated || typeof window === "undefined") return;
-    hydrate<OptimizeSnapshot>(OPTIMIZE_KEY, snap => Object.assign(this, snap));
+    hydrate<OptimizeSnapshot>(OPTIMIZE_KEY, (snap) =>
+      Object.assign(this, snap),
+    );
     this._disposePersist = autorun(() => persist(OPTIMIZE_KEY, this.snapshot));
-    runInAction(() => { this.hasHydrated = true; });
+    runInAction(() => {
+      this.hasHydrated = true;
+    });
 
     // Recompute the projection when any slider changes — debounced so a drag
     // doesn't fire 60 requests. autorun re-runs every observable read.
     this._disposeRecompute = autorun(() => {
       const { solar, diesel, batt } = this;
       if (this._debounceTimer) clearTimeout(this._debounceTimer);
-      this._debounceTimer = setTimeout(() => void this.computeProjection(solar, diesel, batt), 200);
+      this._debounceTimer = setTimeout(
+        () => void this.computeProjection(solar, diesel, batt),
+        200,
+      );
     });
   }
 
@@ -55,15 +75,24 @@ export class OptimizeStore {
     return { solar: this.solar, diesel: this.diesel, batt: this.batt };
   }
 
-  setSolar(v: number): void { this.solar = v; }
-  setDiesel(v: number): void { this.diesel = v; }
-  setBatt(v: number): void { this.batt = v; }
+  setSolar(v: number): void {
+    this.solar = v;
+  }
+  setDiesel(v: number): void {
+    this.diesel = v;
+  }
+  setBatt(v: number): void {
+    this.batt = v;
+  }
 
   /** Initial recommendation load + 30s refresh — recommendations track ticker state. */
   startRecommendationsRefresh(): void {
     void this.loadRecommendations();
     if (this._refreshTimer) return;
-    this._refreshTimer = setInterval(() => void this.loadRecommendations(), 30_000);
+    this._refreshTimer = setInterval(
+      () => void this.loadRecommendations(),
+      30_000,
+    );
   }
 
   stopRecommendationsRefresh(): void {
@@ -71,7 +100,11 @@ export class OptimizeStore {
     this._refreshTimer = null;
   }
 
-  private async computeProjection(solar: number, diesel: number, batt: number): Promise<void> {
+  private async computeProjection(
+    solar: number,
+    diesel: number,
+    batt: number,
+  ): Promise<void> {
     this.loading = true;
     try {
       const r = await api.energy.optimization({
@@ -79,18 +112,24 @@ export class OptimizeStore {
         dieselPriceNgnPerLitre: diesel,
         batteryThresholdPct: batt,
       });
-      runInAction(() => { this.projection = r; });
+      runInAction(() => {
+        this.projection = r;
+      });
     } catch {
       // Keep last known projection so the chart doesn't blink during transient errors.
     } finally {
-      runInAction(() => { this.loading = false; });
+      runInAction(() => {
+        this.loading = false;
+      });
     }
   }
 
   private async loadRecommendations(): Promise<void> {
     try {
       const r = await api.energy.recommendations();
-      runInAction(() => { this.recommendations = r.recommendations; });
+      runInAction(() => {
+        this.recommendations = r.recommendations;
+      });
     } catch {
       /* keep last list */
     }
