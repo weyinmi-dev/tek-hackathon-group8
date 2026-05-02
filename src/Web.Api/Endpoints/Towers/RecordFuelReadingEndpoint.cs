@@ -31,7 +31,10 @@ public sealed class RecordFuelReadingEndpoint : IEndpoint
         })
         .WithTags("Towers")
         .RequireAuthorization()
-        .MapToApiVersion(1);
+        .MapToApiVersion(1)
+        .WithName("RecordFuelReading")
+        .WithSummary("Record an IoT fuel sensor reading")
+        .WithDescription("Updates the live fuel and power metrics for a specified tower and triggers anomaly detection logic.");
     }
 
     public sealed record Request(PowerSource ActivePowerSource, double FuelLevelLiters);
