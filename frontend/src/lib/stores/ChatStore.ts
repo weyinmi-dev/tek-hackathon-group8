@@ -1,5 +1,5 @@
 import { autorun, makeAutoObservable, runInAction } from "mobx";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type {
   AssistantMessageMetadata, ConversationDetail, ConversationMessage,
   ConversationSummary, CopilotAnswer, SkillTraceEntry,
@@ -258,6 +258,7 @@ export class ChatStore {
       });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Copilot is unavailable.";
+      const fallback = buildFallbackAnswer(e, msg);
       runInAction(() => {
         // Mark the optimistic user message resolved (no longer pending) and append
         // an assistant error card so the user can see what went wrong + retry.
@@ -265,7 +266,7 @@ export class ChatStore {
         this.messages = [...this.messages, {
           id: `err-${Date.now()}`,
           role: "assistant",
-          content: `ROOT CAUSE\nCopilot service unavailable.\n\nAFFECTED\n• Backend chat endpoint returned an error.\n\nRECOMMENDED ACTIONS\n1. Verify the backend container is healthy (\`docker compose ps\`)\n2. Check Ai:* config — Mock provider works without Azure OpenAI keys\n3. Inspect logs: \`docker compose logs backend\`\n\nCONFIDENCE\n10 % — ${msg}`,
+          content: fallback,
           createdAtUtc: new Date().toISOString(),
           provider: "error",
           confidence: 0.1,
@@ -302,6 +303,114 @@ export class ChatStore {
 
   dispose(): void {
     this._disposers.forEach(d => d());
+  }
+}
+
+// Classify a thrown ask() error into a category we can phrase usefully. The
+// browser surfaces fetch failures as TypeErrors before any HTTP status is
+// received, so a network outage and a backend 500 look very different even
+// though they both end up here. Distinguishing them stops us telling the user
+// "check docker compose logs" when their wifi is down.
+type FailureCategory = "offline" | "auth" | "rate-limited" | "backend" | "unknown";
+
+function classifyAskFailure(e: unknown): FailureCategory {
+  // navigator.onLine is the single most reliable offline signal — if the OS
+  // reports no connection, trust it regardless of what the error looks like.
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return "offline";
+
+  if (e instanceof ApiError) {
+    if (e.status === 401 || e.status === 403) return "auth";
+    if (e.status === 429) return "rate-limited";
+    if (e.status >= 500) return "backend";
+    return "backend";
+  }
+
+  // fetch() rejects with a TypeError when the request never reaches the server
+  // (DNS failure, no route, CORS preflight blocked, etc.). Browsers don't
+  // standardize the message, but they all use TypeError for this class.
+  if (e instanceof TypeError) return "offline";
+
+  return "unknown";
+}
+
+function buildFallbackAnswer(e: unknown, msg: string): string {
+  const category = classifyAskFailure(e);
+
+  switch (category) {
+    case "offline":
+      return `ROOT CAUSE
+No network connection — the browser couldn't reach the TelcoPilot API.
+
+AFFECTED
+• This Copilot turn was not sent to the server.
+• Conversation history is unchanged.
+
+RECOMMENDED ACTIONS
+1. Check your internet connection and try the query again.
+2. If you're on VPN, confirm the corporate network is reachable.
+3. Reload the page once connectivity returns to resync session state.
+
+CONFIDENCE
+10 % — ${msg}`;
+
+    case "auth":
+      return `ROOT CAUSE
+Authentication rejected by the API — your session may have expired.
+
+AFFECTED
+• This Copilot turn was not processed.
+• Other read endpoints may also start returning 401.
+
+RECOMMENDED ACTIONS
+1. Sign out and back in to issue a fresh JWT.
+2. If the problem persists, ask an admin to verify your account is active.
+
+CONFIDENCE
+10 % — ${msg}`;
+
+    case "rate-limited":
+      return `ROOT CAUSE
+Too many requests — the Copilot endpoint is rate-limiting this client.
+
+AFFECTED
+• This Copilot turn was rejected.
+
+RECOMMENDED ACTIONS
+1. Wait ~30 seconds and retry.
+2. If you're scripting requests, add backoff between asks.
+
+CONFIDENCE
+10 % — ${msg}`;
+
+    case "backend":
+      return `ROOT CAUSE
+Copilot service returned an error — the backend reached the AI orchestrator and threw.
+
+AFFECTED
+• Backend chat endpoint returned an error.
+
+RECOMMENDED ACTIONS
+1. Verify the backend container is healthy (\`docker compose ps\`)
+2. Check Ai:* config — Mock provider works without Azure OpenAI keys
+3. Inspect logs: \`docker compose logs backend\`
+
+CONFIDENCE
+10 % — ${msg}`;
+
+    default:
+      return `ROOT CAUSE
+Copilot request failed for an unrecognized reason.
+
+AFFECTED
+• This Copilot turn was not completed.
+
+RECOMMENDED ACTIONS
+1. Retry the query.
+2. Check the browser console for additional detail.
+3. If it persists, share the message below with the team.
+
+CONFIDENCE
+10 % — ${msg}`;
   }
 }
 
