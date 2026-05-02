@@ -33,6 +33,9 @@
     <ProjectReference Include="..\Modules\Analytics\Modules.Analytics.Infrastructure\Modules.Analytics.Infrastructure.csproj" />
     <ProjectReference Include="..\Modules\Ai\Modules.Ai.Application\Modules.Ai.Application.csproj" />
     <ProjectReference Include="..\Modules\Ai\Modules.Ai.Infrastructure\Modules.Ai.Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules\Energy\Modules.Energy.Api\Modules.Energy.Api.csproj" />
+    <ProjectReference Include="..\Modules\Energy\Modules.Energy.Application\Modules.Energy.Application.csproj" />
+    <ProjectReference Include="..\Modules\Energy\Modules.Energy.Infrastructure\Modules.Energy.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

@@ -101,7 +101,27 @@ export default function LoginPage() {
         <form onSubmit={submit} style={{ width: 380, display: "flex", flexDirection: "column", gap: 18 }}>
           <div>
             <div style={{ fontSize: 22, fontWeight: 600, letterSpacing: "-.01em", marginBottom: 6 }}>Sign in</div>
-            <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Use your corporate credentials.</div>
+            <div style={{ fontSize: 13, color: "var(--ink-3)" }}>Use your corporate credentials. SSO recommended.</div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setErr("Azure AD federation not configured in this environment — use password.")}
+            style={{
+              appearance: "none", cursor: "pointer",
+              padding: "11px 14px", background: "var(--bg-1)", border: "1px solid var(--line-2)",
+              borderRadius: 7, color: "var(--ink)", fontSize: 13, fontWeight: 500,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+            }}
+          >
+            <span style={{ width: 14, height: 14, background: "#0078d4", borderRadius: 2, display: "inline-block" }} />
+            Continue with Azure AD
+          </button>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--ink-3)", fontSize: 11 }}>
+            <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            <span className="mono uppr" style={{ letterSpacing: ".12em" }}>OR PASSWORD</span>
+            <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
           </div>
 
           <Field label="Email">
@@ -110,6 +130,11 @@ export default function LoginPage() {
           <Field label="Password" right={<span style={{ fontSize: 11, color: "var(--ink-3)" }}>Demo: Telco!2025</span>}>
             <input type="password" value={pw} onChange={e => setPw(e.target.value)} style={inp} autoComplete="current-password" />
           </Field>
+
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--ink-2)", cursor: "pointer" }}>
+            <input type="checkbox" defaultChecked style={{ accentColor: "var(--accent)" }} />
+            Require MFA (TOTP) on next prompt
+          </label>
 
           {err && <div className="mono" style={{ fontSize: 11, color: "var(--crit)" }}>⚠ {err}</div>}
 

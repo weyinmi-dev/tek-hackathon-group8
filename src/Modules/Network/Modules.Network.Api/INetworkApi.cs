@@ -7,7 +7,9 @@ public sealed record TowerSnapshot(
     int SignalPct,
     int LoadPct,
     string Status,
-    string? Issue);
+    string? Issue,
+    double Latitude = 0,
+    double Longitude = 0);
 
 public sealed record RegionHealth(string Region, int TowerCount, int CriticalCount, int WarnCount, int AvgSignalPct);
 

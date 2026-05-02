@@ -1,0 +1,46 @@
+// Audit log — full activity trail with filtering
+
+function AuditPage(){
+  const [actor, setActor] = React.useState('all');
+  const actors = ['all',...new Set(AUDIT.map(a=>a.actor))];
+  const rows = actor==='all' ? AUDIT : AUDIT.filter(a=>a.actor===actor);
+  return (
+    <>
+      <TopBar title="Audit Log" sub="Immutable · all actions logged · SOC2 compliant"
+        right={
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <span className="mono" style={{fontSize:10.5,color:'var(--ink-3)'}}>FILTER</span>
+            <select value={actor} onChange={e=>setActor(e.target.value)} style={{
+              appearance:'none',background:'var(--bg-1)',border:'1px solid var(--line)',
+              color:'var(--ink)',padding:'5px 10px',borderRadius:5,fontSize:11.5,fontFamily:'var(--mono)'
+            }}>
+              {actors.map(a=><option key={a} value={a}>{a}</option>)}
+            </select>
+            <C.Btn>Export CSV</C.Btn>
+          </div>
+        }/>
+      <div style={{padding:22}}>
+        <C.Card pad={0}>
+          <div style={{padding:'12px 16px',borderBottom:'1px solid var(--line)',display:'grid',gridTemplateColumns:'100px 140px 90px 160px 1fr 110px',gap:14,fontFamily:'var(--mono)',fontSize:10,color:'var(--ink-3)',letterSpacing:'.12em',textTransform:'uppercase'}}>
+            <span>TIME</span><span>ACTOR</span><span>ROLE</span><span>ACTION</span><span>TARGET</span><span>SOURCE IP</span>
+          </div>
+          {rows.map((a,i)=>(
+            <div key={i} style={{padding:'10px 16px',borderBottom:i<rows.length-1?'1px solid var(--line)':0,display:'grid',gridTemplateColumns:'100px 140px 90px 160px 1fr 110px',gap:14,fontSize:11.5,fontFamily:'var(--mono)',alignItems:'center'}}>
+              <span style={{color:'var(--ink-3)'}}>{a.t}</span>
+              <span style={{color:a.actor==='system'?'var(--info)':'var(--ink)'}}>{a.actor==='system'?'⚙ '+a.actor:a.actor}</span>
+              <span><C.Pill tone={a.role==='admin'?'crit':a.role==='manager'?'warn':a.role==='engineer'?'accent':'info'}>{a.role}</C.Pill></span>
+              <span style={{color:a.action.startsWith('rbac')||a.action.startsWith('auth')?'var(--warn)':'var(--ink-2)'}}>{a.action}</span>
+              <span style={{color:'var(--ink)',fontFamily:'var(--sans)',fontSize:12}}>{a.target}</span>
+              <span style={{color:'var(--ink-3)'}}>{a.ip}</span>
+            </div>
+          ))}
+        </C.Card>
+        <div className="mono" style={{fontSize:10,color:'var(--ink-3)',marginTop:14,letterSpacing:'.06em'}}>
+          ⌁ {rows.length} OF {AUDIT.length} ENTRIES · ROLLING 24H WINDOW · STORED IN AZURE TABLE STORAGE · RETENTION 7Y
+        </div>
+      </div>
+    </>
+  );
+}
+
+window.AuditPage = AuditPage;

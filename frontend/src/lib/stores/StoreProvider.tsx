@@ -29,6 +29,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     store.auth.boot();
     store.ui.boot();
     store.chat.boot();
+
+    // Domain stores. boot() only reads localStorage; the page-level components
+    // call store.<x>.load() / startAutoRefresh() inside their own effects so we
+    // don't fire a network request for a dashboard the user isn't viewing.
+    store.alerts.boot();
+    store.anomalies.boot();
+    store.energy.boot();
+    store.optimize.boot();
+    store.insights.boot();
   }, [store]);
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
@@ -41,6 +50,11 @@ export function useStores(): RootStore {
 }
 
 // Convenience hooks — keep call sites narrow ("I only need auth").
-export const useAuthStore = () => useStores().auth;
-export const useChatStore = () => useStores().chat;
-export const useUiStore   = () => useStores().ui;
+export const useAuthStore       = () => useStores().auth;
+export const useChatStore       = () => useStores().chat;
+export const useUiStore         = () => useStores().ui;
+export const useAlertsStore     = () => useStores().alerts;
+export const useAnomaliesStore  = () => useStores().anomalies;
+export const useEnergyStore     = () => useStores().energy;
+export const useOptimizeStore   = () => useStores().optimize;
+export const useInsightsStore   = () => useStores().insights;

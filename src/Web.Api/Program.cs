@@ -14,6 +14,8 @@ using Modules.Alerts.Application;
 using Modules.Alerts.Infrastructure;
 using Modules.Analytics.Application;
 using Modules.Analytics.Infrastructure;
+using Modules.Energy.Application;
+using Modules.Energy.Infrastructure;
 using Modules.Identity.Application;
 using Modules.Identity.Application.Authorization;
 using Modules.Identity.Infrastructure;
@@ -98,8 +100,18 @@ builder.Services
     .AddAlertsInfrastructure(builder.Configuration)
     .AddAnalyticsApplication()
     .AddAnalyticsInfrastructure(builder.Configuration)
+    .AddEnergyApplication()
+    .AddEnergyInfrastructure(builder.Configuration)
     .AddAiApplication()
     .AddAiInfrastructure(builder.Configuration);
+
+// OSM geo-enrichment helper. Lives in Web.Api so it can reference both the AI
+// module (which owns ISiteGeoLookup) and any module DTO it needs to attach a
+// GeoSummary to. Endpoints inject GeoEnricher and call ForSitesAsync on the
+// list they're about to serialize, satisfying the directive that the system
+// "must use OSM MCP when location-based reasoning is required" — every site /
+// alert / anomaly response now carries OSM-derived spatial context.
+builder.Services.AddScoped<Web.Api.Endpoints.Geo.GeoEnricher>();
 
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();

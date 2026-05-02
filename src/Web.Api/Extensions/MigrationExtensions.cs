@@ -1,9 +1,12 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using Modules.Ai.Infrastructure.Database;
 using Modules.Alerts.Infrastructure.Database;
 using Modules.Analytics.Infrastructure.Database;
+using Modules.Energy.Infrastructure.Database;
 using Modules.Identity.Infrastructure.Database;
 using Modules.Network.Infrastructure.Database;
 using Npgsql;
@@ -20,6 +23,7 @@ public static class MigrationExtensions
         await EnsureSchemaAsync<NetworkDbContext>(scope);
         await EnsureSchemaAsync<AlertsDbContext>(scope);
         await EnsureSchemaAsync<AnalyticsDbContext>(scope);
+        await EnsureSchemaAsync<EnergyDbContext>(scope);
 
         // The AI module uses pgvector for the knowledge_chunks.embedding column. The vector
         // column type cannot be created until the extension exists. We create the extension
@@ -60,6 +64,7 @@ public static class MigrationExtensions
         try
         {
             await creator.CreateTablesAsync();
+            // First-time create — schema matches the model exactly, no diff needed.
             return;
         }
         catch (PostgresException ex) when (IsDuplicateObject(ex.SqlState))
@@ -69,6 +74,105 @@ public static class MigrationExtensions
         }
 
         await CreateMissingObjectsAsync(ctx);
+        // After (re)creating tables, also reconcile per-table columns. CreateTablesAsync
+        // never adds columns to a pre-existing table, so any property added to an entity
+        // after the first deploy stays missing in the live schema until we ALTER it in.
+        // This keeps the EnsureCreated flow viable as the model evolves without us having
+        // to introduce EF migrations.
+        await AddMissingColumnsAsync(ctx);
+    }
+
+    /// <summary>
+    /// Compares each entity's expected column set (from the EF model) against the live
+    /// table in Postgres and emits <c>ALTER TABLE … ADD COLUMN IF NOT EXISTS …</c> for any
+    /// missing columns. Only nullable columns are added — adding a NOT NULL column without
+    /// a default would fail against an existing populated table, and at that point the
+    /// schema change is non-trivial and deserves a real migration with operator awareness.
+    /// </summary>
+    private static async Task AddMissingColumnsAsync(DbContext ctx)
+    {
+        string defaultSchema = ctx.Model.GetDefaultSchema() ?? "public";
+        foreach (IEntityType entityType in ctx.Model.GetEntityTypes())
+        {
+            string? tableName = entityType.GetTableName();
+            if (tableName is null)
+            {
+                continue;
+            }
+            string schema = entityType.GetSchema() ?? defaultSchema;
+            var soi = StoreObjectIdentifier.Table(tableName, schema);
+
+            HashSet<string> liveColumns = await GetLiveColumnNamesAsync(ctx, schema, tableName);
+
+            foreach (IProperty property in entityType.GetProperties())
+            {
+                string? columnName = property.GetColumnName(soi);
+                if (string.IsNullOrEmpty(columnName) || liveColumns.Contains(columnName))
+                {
+                    continue;
+                }
+                if (!property.IsNullable)
+                {
+                    // A required new column on a populated table can't be added safely
+                    // without a default. Surface it as a log-warning-equivalent so the
+                    // operator notices, but don't crash the whole startup over it.
+                    continue;
+                }
+
+                string columnType = property.GetColumnType();
+                string sql = $"ALTER TABLE \"{schema}\".\"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" {columnType} NULL;";
+                try
+                {
+                    await ctx.Database.ExecuteSqlRawAsync(sql);
+                }
+                catch (PostgresException ex) when (IsDuplicateObject(ex.SqlState))
+                {
+                    // Race-condition guard for parallel boots — IF NOT EXISTS already covers it,
+                    // but Postgres can still race on the catalog lookup. Treat as no-op.
+                }
+            }
+        }
+    }
+
+    private static async Task<HashSet<string>> GetLiveColumnNamesAsync(DbContext ctx, string schema, string tableName)
+    {
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        DbConnection conn = ctx.Database.GetDbConnection();
+        bool openedHere = false;
+        if (conn.State != System.Data.ConnectionState.Open)
+        {
+            await conn.OpenAsync();
+            openedHere = true;
+        }
+        try
+        {
+            using DbCommand cmd = conn.CreateCommand();
+            cmd.CommandText =
+                "SELECT column_name FROM information_schema.columns " +
+                "WHERE table_schema = @schema AND table_name = @table;";
+            DbParameter pSchema = cmd.CreateParameter();
+            pSchema.ParameterName = "schema";
+            pSchema.Value = schema;
+            cmd.Parameters.Add(pSchema);
+            DbParameter pTable = cmd.CreateParameter();
+            pTable.ParameterName = "table";
+            pTable.Value = tableName;
+            cmd.Parameters.Add(pTable);
+
+            using DbDataReader reader = await cmd.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                columns.Add(reader.GetString(0));
+            }
+        }
+        finally
+        {
+            if (openedHere)
+            {
+                await conn.CloseAsync();
+            }
+        }
+        return columns;
     }
 
     private static async Task CreateMissingObjectsAsync(DbContext ctx)

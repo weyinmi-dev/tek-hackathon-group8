@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
-import { NetworkMap } from "@/components/NetworkMap";
+import { NetworkMap, type MapMode } from "@/components/NetworkMap";
 import { Bar, Btn, Card, Pill, Section } from "@/components/UI";
 import { api } from "@/lib/api";
 import type { MapResponse, Tower } from "@/lib/types";
@@ -13,6 +13,7 @@ export default function MapPage() {
   const [data, setData] = useState<MapResponse | null>(null);
   const [sel, setSel] = useState<Tower | null>(null);
   const [dispatched, setDispatched] = useState<string | null>(null);
+  const [mode, setMode] = useState<MapMode>("engineer");
 
   useEffect(() => {
     let alive = true;
@@ -37,6 +38,26 @@ export default function MapPage() {
       <TopBar
         title="Network Map"
         sub={`Lagos metro · ${data?.totalTowers ?? "—"} towers · live signal & outage overlay`}
+        right={
+          <div style={{ display: "flex", gap: 6, padding: 3, background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 7 }}>
+            {(["engineer", "public"] as const).map((k) => (
+              <button
+                key={k}
+                onClick={() => setMode(k)}
+                style={{
+                  appearance: "none", border: 0,
+                  padding: "5px 12px", borderRadius: 5,
+                  fontSize: 11, fontWeight: 500,
+                  background: mode === k ? "var(--bg-3)" : "transparent",
+                  color: mode === k ? "var(--ink)" : "var(--ink-3)",
+                  cursor: "pointer",
+                }}
+              >
+                {k === "engineer" ? "Engineer" : "Public"}
+              </button>
+            ))}
+          </div>
+        }
       />
       <div
         style={{
@@ -53,6 +74,7 @@ export default function MapPage() {
               towers={data.towers}
               onSelect={setSel}
               selectedId={sel?.id}
+              mode={mode}
             />
           )}
         </div>

@@ -6,6 +6,7 @@ import { useChatStore } from "@/lib/stores/StoreProvider";
 import type { ChatMessage } from "@/lib/stores/ChatStore";
 import type { SkillTraceEntry } from "@/lib/types";
 import { Btn } from "@/components/UI";
+import { CopilotAttachments } from "@/components/CopilotAttachments";
 
 const SUGGESTED = [
   "Why is Lagos West slow?",
@@ -261,7 +262,9 @@ const Message = observer(function Message({ m }: { m: ChatMessage }) {
           padding: "14px 16px",
           borderRadius: "2px 10px 10px 10px",
           background: "var(--bg-1)",
-          border: "1px solid var(--line-2)",
+          borderTop: "1px solid var(--line-2)",
+          borderRight: "1px solid var(--line-2)",
+          borderBottom: "1px solid var(--line-2)",
           borderLeft: "2px solid var(--accent)",
           fontSize: 13.5,
           lineHeight: 1.6,
@@ -269,6 +272,9 @@ const Message = observer(function Message({ m }: { m: ChatMessage }) {
         }}
       >
         <FormattedAnswer text={m.content} />
+        {m.attachments && m.attachments.length > 0 && (
+          <CopilotAttachments attachments={m.attachments} />
+        )}
       </div>
     </div>
   );

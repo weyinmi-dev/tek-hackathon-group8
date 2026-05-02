@@ -19,4 +19,11 @@ internal sealed class AuditRepository(AnalyticsDbContext db) : IAuditRepository
 
     public async Task AddRangeAsync(IEnumerable<AuditEntry> entries, CancellationToken ct = default) =>
         await db.AuditEntries.AddRangeAsync(entries, ct);
+
+    public async Task<IReadOnlyList<AuditEntry>> ListByActionSinceAsync(string action, DateTime sinceUtc, int take, CancellationToken ct = default) =>
+        await db.AuditEntries.AsNoTracking()
+            .Where(a => a.Action == action && a.OccurredAtUtc >= sinceUtc)
+            .OrderByDescending(a => a.OccurredAtUtc)
+            .Take(Math.Clamp(take, 1, 1000))
+            .ToListAsync(ct);
 }

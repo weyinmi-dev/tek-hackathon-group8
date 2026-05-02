@@ -44,6 +44,22 @@ export type MapResponse = {
   onlineTowers: number;
 };
 
+/**
+ * OSM-derived geo context attached to every site-keyed list item the API returns.
+ * Mirrors `Web.Api.Endpoints.Geo.GeoSummary`. `nearestFuelStationMetres` is null
+ * when no station was found within the 15km Overpass search radius. All fields
+ * are computed once per site per 24h cache TTL — safe to render directly.
+ */
+export type GeoSummary = {
+  latitude: number;
+  longitude: number;
+  regionType: "urban" | "suburban" | "rural" | "remote";
+  accessibilityScore: number;          // 0-100
+  nearestFuelStationMetres: number | null;
+  nearestFuelStationName: string | null;
+  address: string | null;
+};
+
 export type Alert = {
   id: string;
   sev: "critical" | "warn" | "info";
@@ -55,6 +71,9 @@ export type Alert = {
   users: number;
   confidence: number;
   time: string;
+  assignedTeam: string | null;
+  dispatchTarget: string | null;
+  geo: GeoSummary | null;
 };
 
 export type Kpi = {
@@ -78,11 +97,16 @@ export type SparkSeries = {
 export type RegionHealthMetric = { name: string; avgSignal: number; tone: "ok" | "warn" | "crit" };
 export type IncidentTypeBreakdown = { type: string; count: number };
 
+export type RegionLatencySeries = { name: string; color: string; series: number[] };
+export type TopCopilotQuery = { query: string; count: number };
+
 export type MetricsResponse = {
   kpis: Kpi[];
   sparks: SparkSeries;
   regions: RegionHealthMetric[];
   incidentTypes: IncidentTypeBreakdown[];
+  regionLatency: RegionLatencySeries[];
+  topQueries: TopCopilotQuery[];
 };
 
 export type AuditEntry = {
@@ -107,9 +131,18 @@ export type CopilotAnswer = {
   assistantMessageId: string;
 };
 
-// Mirrors Modules.Ai.Domain.Conversations.MessageRole (int enum)
-export type MessageRole = 0 | 1 | 2 | 3;
-export const MessageRoleName = { 0: "system", 1: "user", 2: "assistant", 3: "tool" } as const;
+// Mirrors Modules.Ai.Domain.Conversations.MessageRole. The C# enum is `int`-backed,
+// but Web.Api registers a global JsonStringEnumConverter (Program.cs), so the wire
+// format is the PascalCase enum name — not the numeric value. Matching the wire
+// format here keeps toChatMessage honest; comparing role === 1 was silently
+// falling through to "system" for every rehydrated message after a refresh.
+export type MessageRole = "System" | "User" | "Assistant" | "Tool";
+export const MessageRoleName: Record<MessageRole, "system" | "user" | "assistant" | "tool"> = {
+  System: "system",
+  User: "user",
+  Assistant: "assistant",
+  Tool: "tool",
+};
 
 // Shape stored in messages.metadata for assistant turns — see MessageMetadata in
 // Modules.Ai.Application.Copilot.AskCopilot.AskCopilotCommandHandler.
@@ -220,4 +253,71 @@ export type McpInvocationResult = {
   error: string | null;
   durationMs: number;
   correlationId: string | null;
+};
+
+// ── Energy module ──────────────────────────────────────────────────────────────
+// Mirrors the DTOs returned by /api/energy/*. Field names match what the Energy
+// pages already consume (was hardcoded in lib/energy-data.ts before phase 2).
+
+export type EnergySiteDto = {
+  id: string;          // tower / site code
+  name: string;
+  region: string;
+  source: "grid" | "generator" | "battery" | "solar";
+  battPct: number;
+  dieselPct: number;
+  solarKw: number;
+  gridUp: boolean;
+  dailyDieselLitres: number;
+  costNgn: number;
+  uptimePct: number;
+  solar: boolean;       // has solar at all?
+  health: "ok" | "degraded" | "critical";
+  anomaly: string | null;
+  geo: GeoSummary | null;
+};
+
+export type EnergyKpiDto = {
+  label: string;
+  value: string;
+  unit: string;
+  delta: string;
+  trend: "up" | "down";
+  sub: string;
+};
+
+export type EnergyAnomalyDto = {
+  id: string;
+  site: string;
+  kind: "fuel-theft" | "sensor-offline" | "gen-overuse" | "battery-degrade" | "predicted-fault";
+  sev: "critical" | "warn" | "info";
+  t: string;            // HH:mm
+  detail: string;
+  conf: number;         // 0-1
+  model: string;
+  acknowledged: boolean;
+  geo: GeoSummary | null;
+};
+
+export type DieselTracePoint = { at: string; dieselPct: number; litresDelta: number };
+
+export type EnergyMixSlice = { source: string; pct: number };
+
+export type OptimizationProjection = {
+  baselineDailyOpexMillionsNgn: number;
+  optimizedDailyOpexMillionsNgn: number;
+  dailySavingsMillionsNgn: number;
+  annualSavingsBillionsNgn: number;
+  dieselReductionPct: number;
+  co2AvoidedTonnesPerYear: number;
+  baselineSeries: number[];
+  optimizedSeries: number[];
+  energyMix: EnergyMixSlice[];
+};
+
+export type EnergyRecommendation = {
+  title: string;
+  detail: string;
+  tone: "accent" | "warn" | "info";
+  estimatedDailySavingsNgn: number;
 };
