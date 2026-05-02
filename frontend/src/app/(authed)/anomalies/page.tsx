@@ -71,7 +71,9 @@ const AnomaliesPage = observer(function AnomaliesPage() {
               <button key={a.id} onClick={() => store.setSelected(a.id)} style={{
                 appearance: "none", textAlign: "left", cursor: "pointer",
                 background: active ? "var(--bg-2)" : "var(--bg-1)",
-                border: "1px solid " + (active ? "var(--accent-line)" : "var(--line)"),
+                borderTop: "1px solid " + (active ? "var(--accent-line)" : "var(--line)"),
+                borderRight: "1px solid " + (active ? "var(--accent-line)" : "var(--line)"),
+                borderBottom: "1px solid " + (active ? "var(--accent-line)" : "var(--line)"),
                 borderRadius: 8, padding: 14,
                 borderLeft: `3px solid ${a.sev === "critical" ? "var(--crit)" : a.sev === "warn" ? "var(--warn)" : "var(--info)"}`,
                 opacity: a.acknowledged ? 0.55 : 1,

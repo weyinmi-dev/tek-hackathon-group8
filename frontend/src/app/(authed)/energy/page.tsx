@@ -101,7 +101,7 @@ const EnergyPage = observer(function EnergyPage() {
                     padding: "12px 14px", borderBottom: i < list.length - 1 ? "1px solid var(--line)" : 0,
                     display: "grid", gridTemplateColumns: "1.6fr 90px 60px 1fr 1fr 90px 80px", gap: 10,
                     background: active ? "var(--bg-2)" : "transparent",
-                    border: "none", borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
+                    borderTop: "none", borderRight: "none", borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
                     color: "var(--ink)", alignItems: "center", fontSize: 12.5,
                   }}>
                     <div>

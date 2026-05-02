@@ -186,7 +186,8 @@ function UsersInner() {
                   gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr",
                   gap: 10,
                   background: active ? "var(--bg-2)" : "transparent",
-                  border: "none",
+                  borderTop: "none",
+                  borderRight: "none",
                   borderLeft:
                     "3px solid " + (active ? "var(--accent)" : "transparent"),
                   color: "var(--ink)",
