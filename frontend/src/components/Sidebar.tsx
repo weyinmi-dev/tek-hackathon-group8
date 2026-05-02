@@ -22,13 +22,16 @@ const NAV: NavItem[] = [
   { id: "/copilot",   label: "Copilot",        icon: "✦", section: "OPS" },
   { id: "/map",       label: "Network Map",    icon: "◎", section: "OPS" },
   { id: "/alerts",    label: "Alerts",         icon: "△", section: "OPS", badge: "14" },
-  { id: "/insights",  label: "Dashboard",      icon: "▤", section: "INSIGHTS" },
   { id: "/documents", label: "Knowledge",      icon: "❒", section: "OPS" },
+  { id: "/energy",    label: "Energy Sites",   icon: "⚡", section: "ENERGY" },
+  { id: "/anomalies", label: "Anomalies",      icon: "⚠", section: "ENERGY", badge: "3" },
+  { id: "/optimize",  label: "Optimization",   icon: "∿", section: "ENERGY" },
+  { id: "/insights",  label: "Dashboard",      icon: "▤", section: "INSIGHTS" },
   { id: "/users",     label: "Users & Roles",  icon: "◆", section: "ADMIN", roles: ["admin", "manager"] },
   { id: "/mcp",       label: "MCP Plugins",    icon: "⚙", section: "ADMIN", roles: ["admin", "manager"] },
   { id: "/audit",     label: "Audit Log",      icon: "≡", section: "ADMIN", roles: ["admin", "manager"] },
 ];
-const SECTIONS = ["OPS", "INSIGHTS", "ADMIN"];
+const SECTIONS = ["OPS", "ENERGY", "INSIGHTS", "ADMIN"];
 
 function canSee(item: NavItem, role: Role | undefined): boolean {
   if (!item.roles || item.roles.length === 0) return true;
