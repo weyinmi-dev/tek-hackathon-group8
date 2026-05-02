@@ -15,6 +15,9 @@ internal sealed class TowerConfiguration : IEntityTypeConfiguration<Tower>
         builder.Property(t => t.Region).HasMaxLength(64).IsRequired();
         builder.Property(t => t.Issue).HasMaxLength(256);
         builder.Property(t => t.Status).HasConversion<int>();
+        builder.Property(t => t.ActivePowerSource).HasConversion<int>();
+        builder.Property(t => t.FuelLevelLiters).HasDefaultValue(0);
+        builder.Property(t => t.FuelCapacityLiters).HasDefaultValue(1000);
         builder.HasIndex(t => t.Code).IsUnique();
         builder.HasIndex(t => t.Region);
         builder.Ignore(t => t.DomainEvents);
