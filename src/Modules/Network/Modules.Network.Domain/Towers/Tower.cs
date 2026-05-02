@@ -103,4 +103,6 @@ public interface ITowerRepository
     Task<IReadOnlyList<Tower>> ListByRegionAsync(string region, CancellationToken cancellationToken = default);
     Task AddRangeAsync(IEnumerable<Tower> towers, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
+    Task UpdateAsync(Tower tower, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Tower>> GetLowFuelTowersAsync(double fuelThresholdLiters, CancellationToken cancellationToken = default);
 }
