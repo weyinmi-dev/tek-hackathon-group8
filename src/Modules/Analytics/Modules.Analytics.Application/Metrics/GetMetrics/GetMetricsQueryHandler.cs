@@ -1,6 +1,7 @@
 using System.Globalization;
 using Application.Abstractions.Messaging;
 using Modules.Alerts.Api;
+using Modules.Analytics.Domain.Audit;
 using Modules.Network.Api;
 using SharedKernel;
 
@@ -8,7 +9,8 @@ namespace Modules.Analytics.Application.Metrics.GetMetrics;
 
 internal sealed class GetMetricsQueryHandler(
     INetworkApi network,
-    IAlertsApi alertsApi)
+    IAlertsApi alertsApi,
+    IAuditRepository audit)
     : IQueryHandler<GetMetricsQuery, MetricsResponse>
 {
     // Sparks are pre-baked, demo-grade traces. They mirror what the design-system
@@ -67,6 +69,60 @@ internal sealed class GetMetricsQueryHandler(
             new("Weather",       active.Count(a => a.Cause.Contains("weather", StringComparison.OrdinalIgnoreCase)) + 3),
         ];
 
-        return Result.Success(new MetricsResponse(kpis, Sparks, regions, types));
+        // Per-region 16-point latency series for the BigChart on the Insights page.
+        // No time-series store yet — derive a smooth 16h trace ending at the region's
+        // current load, so the curve always ends at "now" matching the ring health.
+        // The endpoint stays cheap (no extra query) and the values reflect live state.
+        IReadOnlyList<RegionLatencySeries> regionLatency = BuildRegionLatency(regionHealth);
+
+        // Top copilot queries — group recent audit entries (Action == "copilot.query")
+        // by Target text. Pulled from the actual audit log so this card "ticks" as users
+        // ask things, instead of reading from a hardcoded list.
+        IReadOnlyList<AuditEntry> recentQueries = await audit.ListByActionSinceAsync(
+            "copilot.query", DateTime.UtcNow.AddHours(-24), 500, cancellationToken);
+        IReadOnlyList<TopCopilotQuery> topQueries = recentQueries
+            .GroupBy(e => Truncate(e.Target, 60), StringComparer.OrdinalIgnoreCase)
+            .Select(g => new TopCopilotQuery(g.Key, g.Count()))
+            .OrderByDescending(q => q.Count)
+            .ThenBy(q => q.Query, StringComparer.Ordinal)
+            .Take(5)
+            .ToList();
+
+        return Result.Success(new MetricsResponse(kpis, Sparks, regions, types, regionLatency, topQueries));
     }
+
+    private static IReadOnlyList<RegionLatencySeries> BuildRegionLatency(IReadOnlyList<RegionHealth> regions)
+    {
+        // Pick the three "loudest" regions for the chart — the ones with the most signal
+        // degradation from a healthy 95% baseline. Falls back to alphabetical if all healthy.
+        IEnumerable<RegionHealth> ranked = regions
+            .OrderBy(r => r.AvgSignalPct)
+            .ThenBy(r => r.Region, StringComparer.Ordinal)
+            .Take(3);
+
+        string[] palette = ["var(--crit)", "var(--warn)", "var(--accent)"];
+        var series = new List<RegionLatencySeries>();
+        int idx = 0;
+        foreach (RegionHealth r in ranked)
+        {
+            // Higher load → higher latency. Map signal% → an end-of-day latency in ms.
+            int endLatency = Math.Clamp(160 - r.AvgSignalPct, 20, 160);
+            int[] trace = new int[16];
+            for (int i = 0; i < trace.Length; i++)
+            {
+                // Smooth ramp from a calm morning (~25ms) to the current end value, with
+                // a tiny sinusoidal jitter so the curve isn't a perfect line.
+                double t = i / (double)(trace.Length - 1);
+                double baseline = 25 + (endLatency - 25) * t;
+                double jitter = Math.Sin(i * 0.7 + r.Region.Length) * 3;
+                trace[i] = (int)Math.Round(baseline + jitter);
+            }
+            series.Add(new RegionLatencySeries(r.Region, palette[idx % palette.Length], trace));
+            idx++;
+        }
+        return series;
+    }
+
+    private static string Truncate(string value, int max) =>
+        string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max].TrimEnd() + "…";
 }

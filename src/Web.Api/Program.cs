@@ -14,6 +14,8 @@ using Modules.Alerts.Application;
 using Modules.Alerts.Infrastructure;
 using Modules.Analytics.Application;
 using Modules.Analytics.Infrastructure;
+using Modules.Energy.Application;
+using Modules.Energy.Infrastructure;
 using Modules.Identity.Application;
 using Modules.Identity.Application.Authorization;
 using Modules.Identity.Infrastructure;
@@ -98,6 +100,8 @@ builder.Services
     .AddAlertsInfrastructure(builder.Configuration)
     .AddAnalyticsApplication()
     .AddAnalyticsInfrastructure(builder.Configuration)
+    .AddEnergyApplication()
+    .AddEnergyInfrastructure(builder.Configuration)
     .AddAiApplication()
     .AddAiInfrastructure(builder.Configuration);
 

@@ -108,6 +108,7 @@ public static class DependencyInjection
             services.AddScoped<RecommendationSkill>();
             services.AddScoped<KnowledgeSkill>();
             services.AddScoped<InternalToolsSkill>();
+            services.AddScoped<EnergySkill>();
 
             services.AddScoped<Kernel>(sp =>
             {
@@ -123,6 +124,7 @@ public static class DependencyInjection
                 k.Plugins.AddFromObject(sp.GetRequiredService<RecommendationSkill>(), nameof(RecommendationSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<KnowledgeSkill>(),      nameof(KnowledgeSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<InternalToolsSkill>(),  nameof(InternalToolsSkill));
+                k.Plugins.AddFromObject(sp.GetRequiredService<EnergySkill>(),         nameof(EnergySkill));
                 return k;
             });
             services.AddScoped(sp => sp.GetRequiredService<Kernel>().GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
@@ -142,6 +144,12 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeStore, PgVectorKnowledgeStore>();
         services.AddScoped<IRagIndexer, RagIndexer>();
         services.AddScoped<IRagRetriever, RagRetriever>();
+
+        // Energy → knowledge bridge: a scoped indexer service + a hosted background
+        // worker that re-syncs Site/Anomaly state every 5 minutes so the Copilot can
+        // ground "why did Surulere consume more diesel yesterday" answers in fresh data.
+        services.AddScoped<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexer>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexerService>();
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         bool useAzureEmbeddings =
@@ -181,6 +189,7 @@ public static class DependencyInjection
         // registry and the discovery endpoint automatically.
         services.AddScoped<IMcpPlugin, NetworkMcpPlugin>();
         services.AddScoped<IMcpPlugin, AlertsMcpPlugin>();
+        services.AddScoped<IMcpPlugin, EnergyMcpPlugin>();
 
         services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
         services.AddScoped<IMcpInvoker, McpInvoker>();

@@ -1,77 +1,124 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, KPI, Pill, Section } from "@/components/UI";
 import { SiteDieselChart } from "@/components/EnergyCharts";
-import {
-  ENERGY_KPIS,
-  SITES,
-  type EnergySite,
-  type SiteHealth,
-  type SiteSource,
-} from "@/lib/energy-data";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { isEngineer } from "@/lib/rbac";
+import type { EnergyKpiDto, EnergySiteDto } from "@/lib/types";
 
-const SRC_COLOR: Record<SiteSource, string> = {
+const SRC_COLOR: Record<EnergySiteDto["source"], string> = {
   grid: "var(--info)",
   generator: "var(--warn)",
   battery: "var(--accent)",
   solar: "#f5d76e",
 };
-const SRC_LABEL: Record<SiteSource, string> = {
-  grid: "GRID",
-  generator: "GEN",
-  battery: "BATT",
-  solar: "SOLAR",
+const SRC_LABEL: Record<EnergySiteDto["source"], string> = {
+  grid: "GRID", generator: "GEN", battery: "BATT", solar: "SOLAR",
 };
-const HEALTH_TONE: Record<SiteHealth, "ok" | "warn" | "crit"> = {
-  ok: "ok",
-  degraded: "warn",
-  critical: "crit",
+const HEALTH_TONE: Record<EnergySiteDto["health"], "ok" | "warn" | "crit"> = {
+  ok: "ok", degraded: "warn", critical: "crit",
 };
 
-type Filter = "all" | SiteHealth;
+type Filter = "all" | EnergySiteDto["health"];
+
+const KPI_COLORS = ["var(--accent)", "var(--accent)", "#f5d76e", "var(--info)", "var(--ok)", "var(--warn)"];
 
 export default function EnergyPage() {
-  const [sel, setSel] = useState<EnergySite>(
-    SITES.find((s) => s.health === "critical") ?? SITES[0],
-  );
+  const [sites, setSites] = useState<EnergySiteDto[]>([]);
+  const [kpis, setKpis] = useState<EnergyKpiDto[]>([]);
+  const [sel, setSel] = useState<EnergySiteDto | null>(null);
+  const [trace, setTrace] = useState<{ at: string; dieselPct: number }[]>([]);
   const [filter, setFilter] = useState<Filter>("all");
-  const list = filter === "all" ? SITES : SITES.filter((s) => s.health === filter);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ id: string; msg: string } | null>(null);
+  const { user } = useAuth();
+  const canMutate = isEngineer(user?.role);
+
+  // Initial load + 30s refresh so the dashboards reflect ticker mutations.
+  async function refresh() {
+    const [s, k] = await Promise.all([api.energy.sites(), api.energy.kpis()]);
+    setSites(s.sites);
+    setKpis(k.kpis);
+    setSel((prev) => prev
+      ? (s.sites.find((x) => x.id === prev.id) ?? prev)
+      : (s.sites.find((x) => x.health === "critical") ?? s.sites[0] ?? null));
+  }
+  useEffect(() => {
+    void refresh();
+    const id = setInterval(() => void refresh(), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Load the selected site's diesel trace whenever the selection changes.
+  useEffect(() => {
+    if (!sel) { setTrace([]); return; }
+    let alive = true;
+    api.energy.siteDieselTrace(sel.id, 24).then((r) => {
+      if (alive) setTrace(r.points);
+    }).catch(() => { if (alive) setTrace([]); });
+    return () => { alive = false; };
+  }, [sel?.id]);
+
+  const list = filter === "all" ? sites : sites.filter((s) => s.health === filter);
   const counts = {
-    ok: SITES.filter((s) => s.health === "ok").length,
-    degraded: SITES.filter((s) => s.health === "degraded").length,
-    critical: SITES.filter((s) => s.health === "critical").length,
+    ok: sites.filter((s) => s.health === "ok").length,
+    degraded: sites.filter((s) => s.health === "degraded").length,
+    critical: sites.filter((s) => s.health === "critical").length,
   };
+
+  function flash(id: string, msg: string) {
+    setToast({ id, msg });
+    setTimeout(() => setToast((cur) => cur?.id === id ? null : cur), 2400);
+  }
+
+  async function switchSource(target: EnergySiteDto["source"]) {
+    if (!sel) return;
+    setBusy("switch");
+    try {
+      await api.energy.switchSource(sel.id, target);
+      await refresh();
+      flash(sel.id, `Source switched to ${target.toUpperCase()}`);
+    } catch (e) {
+      flash(sel.id, e instanceof Error ? e.message : "Switch failed");
+    } finally { setBusy(null); }
+  }
+
+  async function dispatchRefuel() {
+    if (!sel) return;
+    setBusy("refuel");
+    try {
+      const r = await api.energy.refuel(sel.id, 60);
+      await refresh();
+      flash(sel.id, `Refuelled +${r.pctChange}% (now ${r.dieselPctAfter}%)`);
+    } catch (e) {
+      flash(sel.id, e instanceof Error ? e.message : "Refuel failed");
+    } finally { setBusy(null); }
+  }
 
   return (
     <>
       <TopBar
         title="Energy Sites"
-        sub={`${SITES.length} active sites · grid + diesel + battery + solar orchestration`}
+        sub={`${sites.length} active sites · grid + diesel + battery + solar orchestration`}
         right={
           <div style={{ display: "flex", gap: 6, padding: 3, background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 7 }}>
             {([
-              ["all", "All", SITES.length],
+              ["all", "All", sites.length],
               ["critical", "Critical", counts.critical],
               ["degraded", "Degraded", counts.degraded],
               ["ok", "Healthy", counts.ok],
             ] as const).map(([k, l, n]) => (
-              <button
-                key={k}
-                onClick={() => setFilter(k as Filter)}
-                style={{
-                  appearance: "none", border: 0,
-                  padding: "5px 12px", borderRadius: 5,
-                  fontSize: 11, fontWeight: 500,
-                  background: filter === k ? "var(--bg-3)" : "transparent",
-                  color: filter === k ? "var(--ink)" : "var(--ink-3)",
-                  cursor: "pointer",
-                  display: "flex", alignItems: "center", gap: 6,
-                }}
-              >
-                {l}
-                <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-3)" }}>{n}</span>
+              <button key={k} onClick={() => setFilter(k as Filter)} style={{
+                appearance: "none", border: 0, padding: "5px 12px", borderRadius: 5,
+                fontSize: 11, fontWeight: 500,
+                background: filter === k ? "var(--bg-3)" : "transparent",
+                color: filter === k ? "var(--ink)" : "var(--ink-3)",
+                cursor: "pointer", display: "flex", alignItems: "center", gap: 6,
+              }}>
+                {l} <span className="mono" style={{ fontSize: 9.5, color: "var(--ink-3)" }}>{n}</span>
               </button>
             ))}
           </div>
@@ -79,13 +126,8 @@ export default function EnergyPage() {
       />
       <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(6,1fr)", gap: 10 }}>
-          {ENERGY_KPIS.map((k, i) => (
-            <KPI
-              key={k.label}
-              {...k}
-              spark={KPI_SPARKS[i]}
-              color={KPI_COLORS[i]}
-            />
+          {kpis.map((k, i) => (
+            <KPI key={k.label} {...k} color={KPI_COLORS[i] ?? "var(--accent)"} />
           ))}
         </div>
 
@@ -101,22 +143,16 @@ export default function EnergyPage() {
             </div>
             <div style={{ maxHeight: "calc(100vh - 380px)", overflowY: "auto" }}>
               {list.map((s, i) => {
-                const active = sel.id === s.id;
+                const active = sel?.id === s.id;
                 return (
-                  <button
-                    key={s.id}
-                    onClick={() => setSel(s)}
-                    style={{
-                      appearance: "none", width: "100%", textAlign: "left", cursor: "pointer",
-                      padding: "12px 14px", borderBottom: i < list.length - 1 ? "1px solid var(--line)" : 0,
-                      display: "grid", gridTemplateColumns: "1.6fr 90px 60px 1fr 1fr 90px 80px",
-                      gap: 10,
-                      background: active ? "var(--bg-2)" : "transparent",
-                      border: "none",
-                      borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
-                      color: "var(--ink)", alignItems: "center", fontSize: 12.5,
-                    }}
-                  >
+                  <button key={s.id} onClick={() => setSel(s)} style={{
+                    appearance: "none", width: "100%", textAlign: "left", cursor: "pointer",
+                    padding: "12px 14px", borderBottom: i < list.length - 1 ? "1px solid var(--line)" : 0,
+                    display: "grid", gridTemplateColumns: "1.6fr 90px 60px 1fr 1fr 90px 80px", gap: 10,
+                    background: active ? "var(--bg-2)" : "transparent",
+                    border: "none", borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
+                    color: "var(--ink)", alignItems: "center", fontSize: 12.5,
+                  }}>
                     <div>
                       <div className="mono" style={{ fontSize: 10, color: "var(--accent)", marginBottom: 2 }}>{s.id}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -132,7 +168,7 @@ export default function EnergyPage() {
                     <BarRow pct={s.battPct} tone={s.battPct < 30 ? "crit" : s.battPct < 60 ? "warn" : "ok"} />
                     <BarRow pct={s.dieselPct} tone={s.dieselPct < 20 ? "crit" : s.dieselPct < 50 ? "warn" : "ok"} />
                     <span className="mono" style={{ fontSize: 11, color: "var(--ink-2)" }}>
-                      ₦{(s.costNGN / 1000).toFixed(0)}K
+                      ₦{(s.costNgn / 1000).toFixed(0)}K
                     </span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <HealthDot h={s.health} />
@@ -147,72 +183,76 @@ export default function EnergyPage() {
             </div>
           </Card>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <Card pad={16}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                <div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--accent)", marginBottom: 3 }}>{sel.id}</div>
-                  <div style={{ fontSize: 15, fontWeight: 600 }}>{sel.name}</div>
-                  <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, letterSpacing: ".10em" }}>
-                    {sel.region.toUpperCase()}
+          {sel && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <Card pad={16}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
+                  <div>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--accent)", marginBottom: 3 }}>{sel.id}</div>
+                    <div style={{ fontSize: 15, fontWeight: 600 }}>{sel.name}</div>
+                    <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 2, letterSpacing: ".10em" }}>
+                      {sel.region.toUpperCase()}
+                    </div>
                   </div>
+                  <Pill tone={HEALTH_TONE[sel.health]} dot>{sel.health}</Pill>
                 </div>
-                <Pill tone={HEALTH_TONE[sel.health]} dot>{sel.health}</Pill>
-              </div>
-              {sel.anomaly && (
-                <div style={{
-                  padding: 10, background: "var(--bg-3)", borderRadius: 6,
-                  fontSize: 11.5, marginBottom: 10,
-                  borderLeft: `2px solid ${sel.health === "critical" ? "var(--crit)" : "var(--warn)"}`,
-                }}>
-                  ⚠ {sel.anomaly}
+                {sel.anomaly && (
+                  <div style={{
+                    padding: 10, background: "var(--bg-3)", borderRadius: 6,
+                    fontSize: 11.5, marginBottom: 10,
+                    borderLeft: `2px solid ${sel.health === "critical" ? "var(--crit)" : "var(--warn)"}`,
+                  }}>
+                    ⚠ {sel.anomaly}
+                  </div>
+                )}
+                <div className="mono uppr" style={{ fontSize: 9.5, color: "var(--ink-3)", letterSpacing: ".14em", marginTop: 4, marginBottom: 8 }}>
+                  POWER MIX · NOW
                 </div>
-              )}
-              <div className="mono uppr" style={{ fontSize: 9.5, color: "var(--ink-3)", letterSpacing: ".14em", marginTop: 4, marginBottom: 8 }}>
-                POWER MIX · NOW
-              </div>
-              <PowerMixBar src={sel.source} />
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
-                <Metric label="BATTERY" v={sel.battPct} unit="%" tone={sel.battPct < 30 ? "crit" : sel.battPct < 60 ? "warn" : "ok"} />
-                <Metric label="DIESEL"  v={sel.dieselPct} unit="%" tone={sel.dieselPct < 20 ? "crit" : sel.dieselPct < 50 ? "warn" : "ok"} />
-                <Metric label="SOLAR"   v={sel.solarKw} unit="kW" tone={sel.solarKw > 3 ? "ok" : sel.solarKw > 0 ? "warn" : "crit"} />
-                <Metric label="UPTIME"  v={sel.uptime} unit="%" tone={sel.uptime > 99 ? "ok" : sel.uptime > 97 ? "warn" : "crit"} />
-              </div>
-              <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
-                <Btn primary small>Switch Source</Btn>
-                <Btn small>Dispatch Refuel</Btn>
-                <Btn ghost small>Open in Copilot →</Btn>
-              </div>
-            </Card>
-
-            <Section label="24H DIESEL · LITERS">
-              <Card pad={14}>
-                <SiteDieselChart pct={sel.dieselPct} health={sel.health} />
+                <PowerMixBar src={sel.source} onSwitch={canMutate ? switchSource : undefined} disabled={busy !== null} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+                  <Metric label="BATTERY" v={sel.battPct} unit="%" tone={sel.battPct < 30 ? "crit" : sel.battPct < 60 ? "warn" : "ok"} />
+                  <Metric label="DIESEL"  v={sel.dieselPct} unit="%" tone={sel.dieselPct < 20 ? "crit" : sel.dieselPct < 50 ? "warn" : "ok"} />
+                  <Metric label="SOLAR"   v={sel.solarKw} unit="kW" tone={sel.solarKw > 3 ? "ok" : sel.solarKw > 0 ? "warn" : "crit"} />
+                  <Metric label="UPTIME"  v={sel.uptimePct} unit="%" tone={sel.uptimePct > 99 ? "ok" : sel.uptimePct > 97 ? "warn" : "crit"} />
+                </div>
+                {canMutate && (
+                  <div style={{ display: "flex", gap: 6, marginTop: 14 }}>
+                    <Btn primary small onClick={dispatchRefuel} disabled={busy !== null}>
+                      {busy === "refuel" ? "Dispatching…" : "Dispatch Refuel +60L"}
+                    </Btn>
+                  </div>
+                )}
+                {toast?.id === sel.id && (
+                  <div className="mono" style={{
+                    marginTop: 10, fontSize: 10.5, color: "var(--accent)",
+                    padding: "6px 10px", background: "var(--accent-dim)",
+                    border: "1px solid var(--accent-line)", borderRadius: 5,
+                    letterSpacing: ".06em",
+                  }}>⌁ {toast.msg}</div>
+                )}
               </Card>
-            </Section>
-          </div>
+
+              <Section label="24H DIESEL · LITERS">
+                <Card pad={14}>
+                  {trace.length > 0
+                    ? <BackendDieselChart points={trace} />
+                    : <SiteDieselChart pct={sel.dieselPct} health={sel.health} />}
+                </Card>
+              </Section>
+            </div>
+          )}
         </div>
       </div>
     </>
   );
 }
 
-const KPI_SPARKS: number[][] = [
-  [820,790,760,740,720,700,680,520,420,360,310,280,260,250,240],
-  [21,20,19,18,18,17,17,16,16,16,15,15,15,15,14],
-  [58,60,62,63,64,65,65,66,66,67,67,68,68,68,68],
-  [99.92,99.91,99.92,99.93,99.92,99.90,99.91,99.92,99.90,99.88,99.87,99.85,99.85,99.84,99.85],
-  [5,5,4,4,4,3,3,3,3,3,3,3,3,3,3],
-  [88.2,88.1,88,87.9,87.8,87.7,87.7,87.6,87.6,87.5,87.5,87.4,87.4,87.4,87.4],
-];
-const KPI_COLORS = ["var(--accent)", "var(--accent)", "#f5d76e", "var(--info)", "var(--ok)", "var(--warn)"];
-
-function HealthDot({ h }: { h: SiteHealth }) {
+function HealthDot({ h }: { h: EnergySiteDto["health"] }) {
   const c = h === "critical" ? "var(--crit)" : h === "degraded" ? "var(--warn)" : "var(--ok)";
   return <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: c, boxShadow: `0 0 8px ${c}` }} />;
 }
 
-function SourceTag({ src }: { src: SiteSource }) {
+function SourceTag({ src }: { src: EnergySiteDto["source"] }) {
   const c = SRC_COLOR[src];
   return (
     <span className="mono uppr" style={{
@@ -251,8 +291,12 @@ function Metric({ label, v, unit, tone }: { label: string; v: number; unit: stri
   );
 }
 
-function PowerMixBar({ src }: { src: SiteSource }) {
-  const segs: { k: SiteSource; label: string }[] = [
+function PowerMixBar({ src, onSwitch, disabled }: {
+  src: EnergySiteDto["source"];
+  onSwitch?: (t: EnergySiteDto["source"]) => void;
+  disabled?: boolean;
+}) {
+  const segs: { k: EnergySiteDto["source"]; label: string }[] = [
     { k: "grid", label: "GRID" },
     { k: "generator", label: "DIESEL" },
     { k: "battery", label: "BATTERY" },
@@ -263,23 +307,52 @@ function PowerMixBar({ src }: { src: SiteSource }) {
       {segs.map((s) => {
         const active = src === s.k;
         const c = SRC_COLOR[s.k];
+        const interactive = onSwitch && !active;
         return (
-          <div key={s.k} style={{
-            flex: 1, padding: 8, borderRadius: 5,
-            background: active ? `color-mix(in oklch, ${c} 18%, transparent)` : "var(--bg-3)",
-            border: `1px solid ${active ? c : "var(--line)"}`,
-            textAlign: "center",
-          }}>
+          <button
+            key={s.k}
+            type="button"
+            disabled={disabled || !interactive}
+            onClick={() => onSwitch?.(s.k)}
+            style={{
+              flex: 1, padding: 8, borderRadius: 5,
+              background: active ? `color-mix(in oklch, ${c} 18%, transparent)` : "var(--bg-3)",
+              border: `1px solid ${active ? c : "var(--line)"}`,
+              textAlign: "center",
+              cursor: interactive ? "pointer" : "default",
+              opacity: disabled ? 0.6 : 1,
+            }}
+          >
             <div className="mono uppr" style={{ fontSize: 9, color: active ? c : "var(--ink-3)", letterSpacing: ".12em", fontWeight: 600 }}>
               {s.label}
             </div>
             <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 3 }}>
-              {active ? "ACTIVE" : "idle"}
+              {active ? "ACTIVE" : interactive ? "switch →" : "idle"}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>
   );
 }
 
+function BackendDieselChart({ points }: { points: { at: string; dieselPct: number }[] }) {
+  if (points.length === 0) return null;
+  const W = 300, H = 80;
+  const data = points.map(p => p.dieselPct);
+  const max = 100;
+  return (
+    <div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 80, display: "block" }}>
+        <line x1="0" y1="0" x2={W} y2="0" stroke="var(--line)" strokeWidth=".5" />
+        <polyline
+          points={data.map((v, i) => `${(i / (data.length - 1)) * W},${H - (v / max) * H}`).join(" ")}
+          fill="none" stroke="var(--accent)" strokeWidth="1.5"
+        />
+      </svg>
+      <div className="mono" style={{ fontSize: 9.5, color: "var(--ink-3)", display: "flex", justifyContent: "space-between", marginTop: 4 }}>
+        <span>−24h</span><span>−12h</span><span>NOW</span>
+      </div>
+    </div>
+  );
+}

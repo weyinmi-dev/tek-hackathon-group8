@@ -7,9 +7,25 @@
 // to /auth/refresh.
 
 import type {
-  Alert, CopilotAnswer, LoginResponse, MapResponse, MetricsResponse, AuditEntry,
-  UserListItem, DocumentListItem, DocumentProvider, McpPlugin, McpInvocationResult,
-  ConversationSummary, ConversationDetail,
+  Alert,
+  CopilotAnswer,
+  LoginResponse,
+  MapResponse,
+  MetricsResponse,
+  AuditEntry,
+  UserListItem,
+  DocumentListItem,
+  DocumentProvider,
+  McpPlugin,
+  McpInvocationResult,
+  ConversationSummary,
+  ConversationDetail,
+  EnergySiteDto,
+  EnergyKpiDto,
+  EnergyAnomalyDto,
+  DieselTracePoint,
+  OptimizationProjection,
+  EnergyRecommendation,
 } from "./types";
 
 const API_BASE = "/api";
@@ -26,12 +42,19 @@ type RefreshFn = () => Promise<boolean>;
 let triggerRefresh: RefreshFn = async () => false;
 let inflightRefresh: Promise<boolean> | null = null;
 
-export function configureApi(opts: { getAccessToken: TokenProvider; refresh: RefreshFn }): void {
+export function configureApi(opts: {
+  getAccessToken: TokenProvider;
+  refresh: RefreshFn;
+}): void {
   getAccessToken = opts.getAccessToken;
   triggerRefresh = opts.refresh;
 }
 
-async function request<T>(path: string, init: RequestInit = {}, allowRefresh = true): Promise<T> {
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  allowRefresh = true,
+): Promise<T> {
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!(init.body instanceof FormData) && !headers.has("Content-Type")) {
@@ -41,11 +64,17 @@ async function request<T>(path: string, init: RequestInit = {}, allowRefresh = t
   const token = getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers, cache: "no-store" });
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers,
+    cache: "no-store",
+  });
 
   // Single shared refresh — all concurrent 401s wait on the same promise.
   if (res.status === 401 && allowRefresh) {
-    inflightRefresh ??= triggerRefresh().finally(() => { inflightRefresh = null; });
+    inflightRefresh ??= triggerRefresh().finally(() => {
+      inflightRefresh = null;
+    });
     const refreshed = await inflightRefresh;
     if (refreshed) {
       return request<T>(path, init, false);
@@ -55,12 +84,22 @@ async function request<T>(path: string, init: RequestInit = {}, allowRefresh = t
   if (res.status === 204) return undefined as T;
   if (!res.ok) {
     let detail = "";
-    try { detail = (await res.json()).detail || ""; } catch { /* swallow */ }
+    try {
+      detail = (await res.json()).detail || "";
+    } catch {
+      /* swallow */
+    }
     // Include path + method + token presence in the message — the stack trace alone
     // wasn't enough to diagnose 401s in production. Now you see "401 GET /chat/conversations
     // (no bearer)" or "(bearer)" right in the console.
     const tokenHint = token ? "bearer" : "no bearer";
-    throw new ApiError(res.status, detail || res.statusText, method, path, tokenHint);
+    throw new ApiError(
+      res.status,
+      detail || res.statusText,
+      method,
+      path,
+      tokenHint,
+    );
   }
   const text = await res.text();
   return (text ? JSON.parse(text) : undefined) as T;
@@ -71,10 +110,17 @@ export class ApiError extends Error {
   public readonly method?: string;
   public readonly path?: string;
   public readonly tokenHint?: string;
-  constructor(status: number, message: string, method?: string, path?: string, tokenHint?: string) {
-    const enriched = method && path
-      ? `${status} ${method} ${path} (${tokenHint}): ${message}`
-      : message;
+  constructor(
+    status: number,
+    message: string,
+    method?: string,
+    path?: string,
+    tokenHint?: string,
+  ) {
+    const enriched =
+      method && path
+        ? `${status} ${method} ${path} (${tokenHint}): ${message}`
+        : message;
     super(enriched);
     this.name = "ApiError";
     this.status = status;
@@ -87,26 +133,56 @@ export class ApiError extends Error {
 export const api = {
   // Auth
   login: (email: string, password: string) =>
-    request<LoginResponse>("/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+    request<LoginResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
   refresh: (refreshToken: string) =>
     // allowRefresh=false: refreshing the refresh token would loop on 401.
-    request<LoginResponse>("/auth/refresh", { method: "POST", body: JSON.stringify({ refreshToken }) }, false),
+    request<LoginResponse>(
+      "/auth/refresh",
+      { method: "POST", body: JSON.stringify({ refreshToken }) },
+      false,
+    ),
   me: () => request<AuthUserMe>("/auth/me"),
 
   // User CRUD (manager+ for read/create/update; admin for delete)
   users: () => request<UserListItem[]>("/auth/users"),
   createUser: (body: {
-    email: string; password: string; fullName: string; handle: string;
-    role: string; team: string; region: string;
-  }) => request<UserListItem>("/auth/users", { method: "POST", body: JSON.stringify(body) }),
-  updateUser: (id: string, body: { fullName: string; handle: string; team: string; region: string }) =>
-    request<void>(`/auth/users/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(body) }),
+    email: string;
+    password: string;
+    fullName: string;
+    handle: string;
+    role: string;
+    team: string;
+    region: string;
+  }) =>
+    request<UserListItem>("/auth/users", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  updateUser: (
+    id: string,
+    body: { fullName: string; handle: string; team: string; region: string },
+  ) =>
+    request<void>(`/auth/users/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
   changeUserRole: (id: string, role: string) =>
-    request<void>(`/auth/users/${encodeURIComponent(id)}/role`, { method: "PUT", body: JSON.stringify({ role }) }),
+    request<void>(`/auth/users/${encodeURIComponent(id)}/role`, {
+      method: "PUT",
+      body: JSON.stringify({ role }),
+    }),
   setUserActive: (id: string, isActive: boolean) =>
-    request<void>(`/auth/users/${encodeURIComponent(id)}/active`, { method: "PUT", body: JSON.stringify({ isActive }) }),
+    request<void>(`/auth/users/${encodeURIComponent(id)}/active`, {
+      method: "PUT",
+      body: JSON.stringify({ isActive }),
+    }),
   deleteUser: (id: string) =>
-    request<void>(`/auth/users/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    request<void>(`/auth/users/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 
   // Operations
   chat: (query: string, conversationId?: string | null) =>
@@ -123,17 +199,35 @@ export const api = {
     const suffix = qs ? "?" + qs : "";
     return request<Alert[]>(`/alerts${suffix}`);
   },
-  ackAlert: (id: string) => request<void>(`/alerts/${encodeURIComponent(id)}/ack`, { method: "POST" }),
+  ackAlert: (id: string) =>
+    request<void>(`/alerts/${encodeURIComponent(id)}/ack`, { method: "POST" }),
+  assignAlert: (id: string, team: string) =>
+    request<void>(`/alerts/${encodeURIComponent(id)}/assign`, {
+      method: "POST",
+      body: JSON.stringify({ team }),
+    }),
+  dispatchAlert: (id: string, target: string) =>
+    request<void>(`/alerts/${encodeURIComponent(id)}/dispatch`, {
+      method: "POST",
+      body: JSON.stringify({ target }),
+    }),
 
   // Conversations (durable chat history)
   listConversations: (take = 50) =>
     request<ConversationSummary[]>(`/chat/conversations?take=${take}`),
   getConversation: (id: string) =>
-    request<ConversationDetail>(`/chat/conversations/${encodeURIComponent(id)}`),
+    request<ConversationDetail>(
+      `/chat/conversations/${encodeURIComponent(id)}`,
+    ),
   renameConversation: (id: string, title: string) =>
-    request<void>(`/chat/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ title }) }),
+    request<void>(`/chat/conversations/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title }),
+    }),
   deleteConversation: (id: string) =>
-    request<void>(`/chat/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    request<void>(`/chat/conversations/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
 
   // Analytics
   metrics: () => request<MetricsResponse>("/metrics"),
@@ -143,19 +237,100 @@ export const api = {
   documents: () => request<DocumentListItem[]>("/documents"),
   documentProviders: () => request<DocumentProvider[]>("/documents/providers"),
   uploadDocument: (form: FormData) =>
-    request<DocumentListItem>("/documents/upload", { method: "POST", body: form }),
+    request<DocumentListItem>("/documents/upload", {
+      method: "POST",
+      body: form,
+    }),
   linkDocument: (body: {
-    title: string; fileName: string; contentType: string; sizeBytes: number;
-    region?: string; tags?: string; category: string;
-    source: string; storageKey: string; externalReference?: string;
-  }) => request<{ id: string; title: string; source: string; status: string }>("/documents/link", { method: "POST", body: JSON.stringify(body) }),
-  reindexDocument: (id: string) => request<void>(`/documents/${encodeURIComponent(id)}/reindex`, { method: "POST" }),
-  deleteDocument: (id: string) => request<void>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    title: string;
+    fileName: string;
+    contentType: string;
+    sizeBytes: number;
+    region?: string;
+    tags?: string;
+    category: string;
+    source: string;
+    storageKey: string;
+    externalReference?: string;
+  }) =>
+    request<{ id: string; title: string; source: string; status: string }>(
+      "/documents/link",
+      { method: "POST", body: JSON.stringify(body) },
+    ),
+  reindexDocument: (id: string) =>
+    request<void>(`/documents/${encodeURIComponent(id)}/reindex`, {
+      method: "POST",
+    }),
+  deleteDocument: (id: string) =>
+    request<void>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
 
   // MCP
   mcpPlugins: () => request<McpPlugin[]>("/mcp/plugins"),
-  mcpInvoke: (body: { pluginId: string; capability: string; arguments?: Record<string, unknown>; correlationId?: string }) =>
-    request<McpInvocationResult>("/mcp/invoke", { method: "POST", body: JSON.stringify(body) }),
+  mcpInvoke: (body: {
+    pluginId: string;
+    capability: string;
+    arguments?: Record<string, unknown>;
+    correlationId?: string;
+  }) =>
+    request<McpInvocationResult>("/mcp/invoke", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  // Energy — site fleet, KPIs, anomalies, traces, optimization, recommendations.
+  energy: {
+    sites: () => request<{ sites: EnergySiteDto[] }>("/energy/sites"),
+    kpis: () => request<{ kpis: EnergyKpiDto[] }>("/energy/kpis"),
+    anomalies: (take = 50) =>
+      request<{ anomalies: EnergyAnomalyDto[] }>(
+        `/energy/anomalies?take=${take}`,
+      ),
+    ackAnomaly: (id: string) =>
+      request<void>(`/energy/anomalies/${encodeURIComponent(id)}/ack`, {
+        method: "POST",
+      }),
+    siteDieselTrace: (siteCode: string, hours = 24) =>
+      request<{ siteCode: string; points: DieselTracePoint[] }>(
+        `/energy/sites/${encodeURIComponent(siteCode)}/diesel-trace?hours=${hours}`,
+      ),
+    switchSource: (
+      siteCode: string,
+      source: "grid" | "generator" | "battery" | "solar",
+    ) =>
+      request<{ siteCode: string; source: string; health: string }>(
+        `/energy/sites/${encodeURIComponent(siteCode)}/switch-source`,
+        { method: "POST", body: JSON.stringify({ source }) },
+      ),
+    refuel: (siteCode: string, litresAdded: number) =>
+      request<{ siteCode: string; dieselPctAfter: number; pctChange: number }>(
+        `/energy/sites/${encodeURIComponent(siteCode)}/refuel`,
+        { method: "POST", body: JSON.stringify({ litresAdded }) },
+      ),
+    optimization: (
+      opts: {
+        solarPct?: number;
+        dieselPriceNgnPerLitre?: number;
+        batteryThresholdPct?: number;
+      } = {},
+    ) => {
+      const q = new URLSearchParams();
+      if (opts.solarPct != null) q.set("solar", String(opts.solarPct));
+      if (opts.dieselPriceNgnPerLitre != null)
+        q.set("diesel", String(opts.dieselPriceNgnPerLitre));
+      if (opts.batteryThresholdPct != null)
+        q.set("batt", String(opts.batteryThresholdPct));
+      const qs = q.toString();
+      return request<OptimizationProjection>(
+        `/energy/optimize/projection${qs ? "?" + qs : ""}`,
+      );
+    },
+    recommendations: (siteCode?: string) => {
+      const qs = siteCode ? `?site=${encodeURIComponent(siteCode)}` : "";
+      return request<{ recommendations: EnergyRecommendation[] }>(
+        `/energy/recommendations${qs}`,
+      );
+    },
+  },
 };
 
 export type AuthUserMe = {

@@ -1,10 +1,15 @@
 "use client";
 
-import { FUEL_TRACE_THEFT, type SiteHealth } from "@/lib/energy-data";
+// Used as a fallback in the Energy Sites detail panel + the Anomalies fuel-theft
+// signature view. Real per-site traces come from /api/energy/sites/{code}/diesel-trace;
+// this synthetic curve is only rendered when the trace endpoint hasn't responded yet.
+type SiteHealth = "ok" | "degraded" | "critical";
+
+const FUEL_TRACE_THEFT_FALLBACK = [86,86,85,85,84,84,84,83,83,82,82,81,81,80,80,80,79,79,61,60,60,59,59,58];
 
 export function SiteDieselChart({ pct, health }: { pct: number; health: SiteHealth }) {
   const data = health === "critical"
-    ? FUEL_TRACE_THEFT
+    ? FUEL_TRACE_THEFT_FALLBACK
     : Array.from({ length: 24 }, (_, i) => Math.max(20, pct + 4 * Math.sin(i / 4) - i * 0.4));
   const max = 100, W = 300, H = 80;
   return (

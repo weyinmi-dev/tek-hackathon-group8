@@ -52,6 +52,35 @@ export default function AlertsPage() {
     }, 2400);
   }
 
+  // Manager+ only — backend enforces it too. We use prompt() for the team name to
+  // keep this minimal; a proper inline form is the future design pass.
+  async function assign(a: Alert): Promise<void> {
+    const team = window.prompt(`Assign ${a.id} to which NOC team?`, a.assignedTeam ?? "field-team-3")?.trim();
+    if (!team) return;
+    try {
+      await api.assignAlert(a.id, team);
+      await load();
+      flashAction(a.id, `Assigned to ${team}`);
+    } catch (e) {
+      flashAction(a.id, e instanceof Error ? e.message : "Assign failed");
+    }
+  }
+
+  async function dispatchField(a: Alert): Promise<void> {
+    const target = window.prompt(
+      `Dispatch field team for ${a.id}. Target?`,
+      a.dispatchTarget ?? `field-team-3 → ${a.tower}`,
+    )?.trim();
+    if (!target) return;
+    try {
+      await api.dispatchAlert(a.id, target);
+      await load();
+      flashAction(a.id, `Field dispatch logged: ${target}`);
+    } catch (e) {
+      flashAction(a.id, e instanceof Error ? e.message : "Dispatch failed");
+    }
+  }
+
   function openInCopilot(a: Alert): void {
     const q = `Diagnose incident ${a.id} on ${a.tower} in ${a.region}: ${a.title}`;
     router.push(`/copilot?q=${encodeURIComponent(q)}`);
@@ -292,6 +321,8 @@ export default function AlertsPage() {
                   k="Confidence"
                   v={Math.round(sel.confidence * 100) + "%"}
                 />
+                <Row k="Assigned" v={sel.assignedTeam ?? "—"} />
+                <Row k="Field dispatch" v={sel.dispatchTarget ?? "—"} />
                 <Row k="Status" v={sel.status} last />
               </Card>
             </Section>
@@ -310,12 +341,12 @@ export default function AlertsPage() {
                         : "Acknowledge"}
                   </Btn>
                   {isManager(user?.role) && (
-                    <Btn onClick={() => flashAction(sel.id, "Assigned to field-team-3")}>
-                      Assign
+                    <Btn onClick={() => assign(sel)}>
+                      {sel.assignedTeam ? "Reassign" : "Assign"}
                     </Btn>
                   )}
-                  <Btn onClick={() => flashAction(sel.id, "Field dispatch queued · ETA 22 min")}>
-                    Dispatch field
+                  <Btn onClick={() => dispatchField(sel)}>
+                    {sel.dispatchTarget ? "Re-dispatch" : "Dispatch field"}
                   </Btn>
                   <Btn ghost onClick={() => openInCopilot(sel)}>
                     Open in Copilot →

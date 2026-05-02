@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Application\Application.csproj" />
+    <ProjectReference Include="..\..\..\Infrastructure\Infrastructure.csproj" />
+    <ProjectReference Include="..\Modules.Energy.Api\Modules.Energy.Api.csproj" />
+    <ProjectReference Include="..\Modules.Energy.Application\Modules.Energy.Application.csproj" />
+  </ItemGroup>
+
+</Project>

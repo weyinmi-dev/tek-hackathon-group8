@@ -30,7 +30,7 @@ export default function DashboardPage() {
         <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 14 }}>
           <Card pad={16}>
             <div className="mono uppr" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: ".14em", marginBottom: 12 }}>NETWORK LATENCY · p95 · 24h</div>
-            <BigChart />
+            <BigChart series={m?.regionLatency ?? []} />
           </Card>
           <Card pad={16}>
             <div className="mono uppr" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: ".14em", marginBottom: 12 }}>REGIONAL HEALTH</div>
@@ -63,18 +63,19 @@ export default function DashboardPage() {
           </Card>
           <Card pad={16}>
             <div className="mono uppr" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: ".14em", marginBottom: 10 }}>COPILOT TOP QUERIES · 24h</div>
-            {[
-              ['"why is lagos west slow"', 142],
-              ['"show outages last 2h"', 98],
-              ['"predict next failure"', 76],
-              ['"compare lekki vs VI"', 54],
-              ['"packet loss ikeja"', 41],
-            ].map(([q, n]) => (
-              <div key={q as string} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: 12, borderBottom: "1px solid var(--line)" }}>
-                <span style={{ color: "var(--ink-2)", fontFamily: "var(--mono)", fontSize: 11 }}>{q}</span>
-                <span className="mono" style={{ color: "var(--accent)" }}>{n}</span>
+            {(m?.topQueries ?? []).map((q) => (
+              <div key={q.query} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", fontSize: 12, borderBottom: "1px solid var(--line)", gap: 10 }}>
+                <span style={{ color: "var(--ink-2)", fontFamily: "var(--mono)", fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  &ldquo;{q.query}&rdquo;
+                </span>
+                <span className="mono" style={{ color: "var(--accent)", flexShrink: 0 }}>{q.count}</span>
               </div>
             ))}
+            {(m?.topQueries ?? []).length === 0 && (
+              <div className="mono" style={{ color: "var(--ink-3)", fontSize: 11, padding: "7px 0" }}>
+                ⌁ no copilot queries in the last 24h
+              </div>
+            )}
           </Card>
           <Card pad={16}>
             <div className="mono uppr" style={{ fontSize: 10, color: "var(--ink-3)", letterSpacing: ".14em", marginBottom: 10 }}>SLA COMPLIANCE</div>
@@ -93,13 +94,15 @@ export default function DashboardPage() {
   );
 }
 
-function BigChart() {
-  const series = [
-    { name: "Lagos West",    color: "var(--crit)",   data: [34,36,40,44,52,62,76,90,108,124,138,142,140,138,135,132] },
-    { name: "Ikeja",         color: "var(--warn)",   data: [28,30,32,34,36,40,44,48,52,55,58,56,52,50,48,46] },
-    { name: "V.I. / Ikoyi",  color: "var(--accent)", data: [22,23,24,24,25,26,28,30,32,34,36,34,32,30,28,28] },
-  ];
+function BigChart({ series }: { series: { name: string; color: string; series: number[] }[] }) {
   const max = 160, W = 800, H = 180;
+  if (series.length === 0) {
+    return (
+      <div className="mono" style={{ color: "var(--ink-3)", fontSize: 11, padding: 20, textAlign: "center" }}>
+        ⌁ awaiting region telemetry
+      </div>
+    );
+  }
   return (
     <div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 180, display: "block" }}>
@@ -110,11 +113,14 @@ function BigChart() {
           </g>
         ))}
         {series.map(s => {
-          const pts = s.data.map((v, i) => `${40 + (i / (s.data.length - 1)) * (W - 40)},${H - (v / max) * H + 20}`).join(" ");
+          const data = s.series;
+          if (data.length === 0) return null;
+          const pts = data.map((v, i) => `${40 + (i / Math.max(1, data.length - 1)) * (W - 40)},${H - (v / max) * H + 20}`).join(" ");
+          const last = data.at(-1) ?? 0;
           return (
             <g key={s.name}>
               <polyline points={pts} fill="none" stroke={s.color} strokeWidth="1.5" strokeLinecap="round" />
-              <circle cx={40 + (W - 40)} cy={H - (s.data[s.data.length - 1] / max) * H + 20} r="3" fill={s.color} />
+              <circle cx={40 + (W - 40)} cy={H - (last / max) * H + 20} r="3" fill={s.color} />
             </g>
           );
         })}

@@ -2,6 +2,8 @@ using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Modules.Alerts.Application.Alerts.Acknowledge;
+using Modules.Alerts.Application.Alerts.Assign;
+using Modules.Alerts.Application.Alerts.Dispatch;
 using Modules.Alerts.Application.Alerts.GetAlerts;
 using Modules.Identity.Application.Authorization;
 using SharedKernel;
@@ -32,5 +34,30 @@ public sealed class Get : IEndpoint
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
         .WithTags(Tags.Alerts);
+
+        // POST /api/alerts/{id}/assign — manager+ assigns the incident to a NOC team.
+        app.MapPost("alerts/{id}/assign", [Authorize(Policy = Policies.RequireManager)]
+            async (string id, AssignBody body, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
+        {
+            string actor = user.FindFirstValue("handle") ?? "unknown";
+            string role = user.FindFirstValue(ClaimTypes.Role) ?? "viewer";
+            Result result = await sender.Send(new AssignAlertCommand(id, body.Team, actor, role), ct);
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .WithTags(Tags.Alerts);
+
+        // POST /api/alerts/{id}/dispatch — engineer+ records a field dispatch (truck, vendor, etc.).
+        app.MapPost("alerts/{id}/dispatch", [Authorize(Policy = Policies.RequireEngineer)]
+            async (string id, DispatchBody body, ClaimsPrincipal user, ISender sender, CancellationToken ct) =>
+        {
+            string actor = user.FindFirstValue("handle") ?? "unknown";
+            string role = user.FindFirstValue(ClaimTypes.Role) ?? "viewer";
+            Result result = await sender.Send(new DispatchAlertCommand(id, body.Target, actor, role), ct);
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .WithTags(Tags.Alerts);
     }
+
+    public sealed record AssignBody(string Team);
+    public sealed record DispatchBody(string Target);
 }

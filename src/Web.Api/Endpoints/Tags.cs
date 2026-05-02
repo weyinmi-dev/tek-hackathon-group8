@@ -9,4 +9,5 @@ public static class Tags
     public const string Map = "Map";
     public const string Documents = "Documents";
     public const string Mcp = "Mcp";
+    public const string Energy = "Energy";
 }

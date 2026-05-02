@@ -55,6 +55,8 @@ export type Alert = {
   users: number;
   confidence: number;
   time: string;
+  assignedTeam: string | null;
+  dispatchTarget: string | null;
 };
 
 export type Kpi = {
@@ -78,11 +80,16 @@ export type SparkSeries = {
 export type RegionHealthMetric = { name: string; avgSignal: number; tone: "ok" | "warn" | "crit" };
 export type IncidentTypeBreakdown = { type: string; count: number };
 
+export type RegionLatencySeries = { name: string; color: string; series: number[] };
+export type TopCopilotQuery = { query: string; count: number };
+
 export type MetricsResponse = {
   kpis: Kpi[];
   sparks: SparkSeries;
   regions: RegionHealthMetric[];
   incidentTypes: IncidentTypeBreakdown[];
+  regionLatency: RegionLatencySeries[];
+  topQueries: TopCopilotQuery[];
 };
 
 export type AuditEntry = {
@@ -229,4 +236,69 @@ export type McpInvocationResult = {
   error: string | null;
   durationMs: number;
   correlationId: string | null;
+};
+
+// ── Energy module ──────────────────────────────────────────────────────────────
+// Mirrors the DTOs returned by /api/energy/*. Field names match what the Energy
+// pages already consume (was hardcoded in lib/energy-data.ts before phase 2).
+
+export type EnergySiteDto = {
+  id: string;          // tower / site code
+  name: string;
+  region: string;
+  source: "grid" | "generator" | "battery" | "solar";
+  battPct: number;
+  dieselPct: number;
+  solarKw: number;
+  gridUp: boolean;
+  dailyDieselLitres: number;
+  costNgn: number;
+  uptimePct: number;
+  solar: boolean;       // has solar at all?
+  health: "ok" | "degraded" | "critical";
+  anomaly: string | null;
+};
+
+export type EnergyKpiDto = {
+  label: string;
+  value: string;
+  unit: string;
+  delta: string;
+  trend: "up" | "down";
+  sub: string;
+};
+
+export type EnergyAnomalyDto = {
+  id: string;
+  site: string;
+  kind: "fuel-theft" | "sensor-offline" | "gen-overuse" | "battery-degrade" | "predicted-fault";
+  sev: "critical" | "warn" | "info";
+  t: string;            // HH:mm
+  detail: string;
+  conf: number;         // 0-1
+  model: string;
+  acknowledged: boolean;
+};
+
+export type DieselTracePoint = { at: string; dieselPct: number; litresDelta: number };
+
+export type EnergyMixSlice = { source: string; pct: number };
+
+export type OptimizationProjection = {
+  baselineDailyOpexMillionsNgn: number;
+  optimizedDailyOpexMillionsNgn: number;
+  dailySavingsMillionsNgn: number;
+  annualSavingsBillionsNgn: number;
+  dieselReductionPct: number;
+  co2AvoidedTonnesPerYear: number;
+  baselineSeries: number[];
+  optimizedSeries: number[];
+  energyMix: EnergyMixSlice[];
+};
+
+export type EnergyRecommendation = {
+  title: string;
+  detail: string;
+  tone: "accent" | "warn" | "info";
+  estimatedDailySavingsNgn: number;
 };
