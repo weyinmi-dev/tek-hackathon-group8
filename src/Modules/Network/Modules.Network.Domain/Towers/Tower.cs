@@ -111,4 +111,5 @@ public interface ITowerRepository
     Task<int> CountAsync(CancellationToken cancellationToken = default);
     Task UpdateAsync(Tower tower, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<Tower>> GetLowFuelTowersAsync(double fuelThresholdLiters, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Tower>> GetActiveGeneratorTowersAsync(CancellationToken cancellationToken = default);
 }

@@ -33,4 +33,12 @@ internal sealed class TowerRepository(NetworkDbContext db) : ITowerRepository
             .OrderBy(t => t.FuelLevelLiters)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<IReadOnlyList<Tower>> GetActiveGeneratorTowersAsync(CancellationToken cancellationToken = default)
+    {
+        return await db.Towers.AsNoTracking()
+            .Where(t => t.ActivePowerSource == PowerSource.Generator)
+            .OrderBy(t => t.Code)
+            .ToListAsync(cancellationToken);
+    }
 }

@@ -33,4 +33,25 @@ public sealed class PowerManagementSkill(IServiceProvider serviceProvider, ILogg
             
         return $"Found {towers.Count} sites with critically low fuel:\n" + string.Join("\n", lines);
     }
+
+    [KernelFunction("get_active_generator_sites")]
+    [Description("Retrieves a list of network towers that are currently running on Generator power instead of Grid power.")]
+    public async Task<string> GetActiveGeneratorSitesAsync()
+    {
+        logger.LogInformation("AI querying sites currently running on Generator power");
+
+        using var scope = serviceProvider.CreateScope();
+        var towerRepo = scope.ServiceProvider.GetRequiredService<ITowerRepository>();
+
+        var towers = await towerRepo.GetActiveGeneratorTowersAsync();
+
+        if (!towers.Any())
+        {
+            return "There are currently no sites running on Generator power. All sites are on Grid/Solar/Battery.";
+        }
+
+        var lines = towers.Select(t => $"- {t.Code} ({t.Name}) - Fuel remaining: {t.FuelLevelLiters}L");
+            
+        return $"Found {towers.Count} sites actively running on Generators:\n" + string.Join("\n", lines);
+    }
 }
