@@ -107,9 +107,18 @@ export type CopilotAnswer = {
   assistantMessageId: string;
 };
 
-// Mirrors Modules.Ai.Domain.Conversations.MessageRole (int enum)
-export type MessageRole = 0 | 1 | 2 | 3;
-export const MessageRoleName = { 0: "system", 1: "user", 2: "assistant", 3: "tool" } as const;
+// Mirrors Modules.Ai.Domain.Conversations.MessageRole. The C# enum is `int`-backed,
+// but Web.Api registers a global JsonStringEnumConverter (Program.cs), so the wire
+// format is the PascalCase enum name — not the numeric value. Matching the wire
+// format here keeps toChatMessage honest; comparing role === 1 was silently
+// falling through to "system" for every rehydrated message after a refresh.
+export type MessageRole = "System" | "User" | "Assistant" | "Tool";
+export const MessageRoleName: Record<MessageRole, "system" | "user" | "assistant" | "tool"> = {
+  System: "system",
+  User: "user",
+  Assistant: "assistant",
+  Tool: "tool",
+};
 
 // Shape stored in messages.metadata for assistant turns — see MessageMetadata in
 // Modules.Ai.Application.Copilot.AskCopilot.AskCopilotCommandHandler.

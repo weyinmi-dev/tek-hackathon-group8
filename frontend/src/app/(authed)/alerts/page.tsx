@@ -1,19 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, Pill, Section } from "@/components/UI";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { isManager } from "@/lib/rbac";
 import type { Alert } from "@/lib/types";
 
 export default function AlertsPage() {
+  const router = useRouter();
   const [filter, setFilter] = useState<"all" | "critical" | "warn" | "info">(
     "all",
   );
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [sel, setSel] = useState<Alert | null>(null);
   const [acking, setAcking] = useState<string | null>(null);
+  // Visual-only confirmations for actions that don't have a backend endpoint yet.
+  // Stored per-alert so a banner can flash next to the buttons.
+  const [actionToast, setActionToast] = useState<{ id: string; msg: string } | null>(null);
   const { user } = useAuth();
 
   async function load() {
@@ -37,6 +43,18 @@ export default function AlertsPage() {
     } finally {
       setAcking(null);
     }
+  }
+
+  function flashAction(id: string, msg: string): void {
+    setActionToast({ id, msg });
+    setTimeout(() => {
+      setActionToast((cur) => (cur?.id === id ? null : cur));
+    }, 2400);
+  }
+
+  function openInCopilot(a: Alert): void {
+    const q = `Diagnose incident ${a.id} on ${a.tower} in ${a.region}: ${a.title}`;
+    router.push(`/copilot?q=${encodeURIComponent(q)}`);
   }
 
   const counts = {
@@ -278,18 +296,47 @@ export default function AlertsPage() {
               </Card>
             </Section>
             {user?.role !== "viewer" && (
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                <Btn
-                  primary
-                  onClick={() => ack(sel.id)}
-                  disabled={acking === sel.id || sel.status === "acknowledged"}
-                >
-                  {acking === sel.id
-                    ? "Acknowledging…"
-                    : sel.status === "acknowledged"
-                      ? "Acknowledged"
-                      : "Acknowledge"}
-                </Btn>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <Btn
+                    primary
+                    onClick={() => ack(sel.id)}
+                    disabled={acking === sel.id || sel.status === "acknowledged"}
+                  >
+                    {acking === sel.id
+                      ? "Acknowledging…"
+                      : sel.status === "acknowledged"
+                        ? "Acknowledged"
+                        : "Acknowledge"}
+                  </Btn>
+                  {isManager(user?.role) && (
+                    <Btn onClick={() => flashAction(sel.id, "Assigned to field-team-3")}>
+                      Assign
+                    </Btn>
+                  )}
+                  <Btn onClick={() => flashAction(sel.id, "Field dispatch queued · ETA 22 min")}>
+                    Dispatch field
+                  </Btn>
+                  <Btn ghost onClick={() => openInCopilot(sel)}>
+                    Open in Copilot →
+                  </Btn>
+                </div>
+                {actionToast?.id === sel.id && (
+                  <div
+                    className="mono"
+                    style={{
+                      fontSize: 10.5,
+                      color: "var(--accent)",
+                      padding: "6px 10px",
+                      background: "var(--accent-dim)",
+                      border: "1px solid var(--accent-line)",
+                      borderRadius: 5,
+                      letterSpacing: ".06em",
+                    }}
+                  >
+                    ⌁ {actionToast.msg}
+                  </div>
+                )}
               </div>
             )}
           </div>

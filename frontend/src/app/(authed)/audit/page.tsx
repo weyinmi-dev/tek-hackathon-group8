@@ -18,6 +18,25 @@ export default function AuditPage() {
   const actors = ["all", ...Array.from(new Set(rows.map(r => r.actor)))];
   const filtered = actor === "all" ? rows : rows.filter(r => r.actor === actor);
 
+  function exportCsv(): void {
+    const header = ["time", "actor", "role", "action", "target", "ip"];
+    const escape = (s: string = ""): string =>
+      /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+    const lines = [
+      header.join(","),
+      ...filtered.map(r => [r.time, r.actor, r.role, r.action, r.target, r.ip].map(escape).join(",")),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `telcopilot-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <>
       <TopBar
@@ -32,7 +51,7 @@ export default function AuditPage() {
             }}>
               {actors.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
-            <Btn>Export CSV</Btn>
+            <Btn onClick={exportCsv} disabled={filtered.length === 0}>Export CSV</Btn>
           </div>
         }
       />

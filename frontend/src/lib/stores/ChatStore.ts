@@ -306,8 +306,12 @@ export class ChatStore {
 }
 
 function toChatMessage(m: ConversationMessage): ChatMessage {
-  // Server roles: 0=system, 1=user, 2=assistant, 3=tool
-  const roleName = m.role === 1 ? "user" : m.role === 2 ? "assistant" : "system";
+  // Backend serializes MessageRole as a PascalCase string via JsonStringEnumConverter
+  // (see Web.Api/Program.cs). Lower-case for comparison so we don't break if that
+  // converter is ever swapped for one with a different naming policy.
+  const role = String(m.role).toLowerCase();
+  const roleName: ChatMessage["role"] =
+    role === "user" ? "user" : role === "assistant" ? "assistant" : "system";
   const base: ChatMessage = {
     id: m.id,
     role: roleName,

@@ -14,16 +14,29 @@ const REGIONS: { t: string; x: string; y: string }[] = [
   { t: "FESTAC",     x: "6%",  y: "64%" },
 ];
 
+export type MapMode = "engineer" | "public";
+
+// Crowd-sourced report positions used in public mode. The handoff hard-codes
+// these as illustrative pins around the two worst congestion hotspots
+// (Lagos West around 18,62 and Lekki around 76,72) — clusters of low-fi user
+// reports the engineer-mode view doesn't surface.
+const CROWD_REPORTS: Array<[number, number]> = [
+  [16, 60], [20, 64], [22, 58],
+  [76, 72], [72, 76], [80, 74],
+];
+
 export function NetworkMap({
   towers,
   compact = false,
   onSelect,
   selectedId,
+  mode = "engineer",
 }: {
   towers: Tower[];
   compact?: boolean;
   onSelect?: (t: Tower) => void;
   selectedId?: string;
+  mode?: MapMode;
 }) {
   const [hover, setHover] = useState<Tower | null>(null);
 
@@ -99,6 +112,18 @@ export function NetworkMap({
         );
       })}
 
+      {/* Crowd-sourced reports overlay — public mode only */}
+      {mode === "public" && CROWD_REPORTS.map(([x, y], i) => (
+        <div key={`crowd-${i}`} style={{
+          position: "absolute", left: `${x}%`, top: `${y}%`,
+          transform: "translate(-50%,-50%)",
+          width: 6, height: 6, borderRadius: "50%",
+          background: "rgba(91,140,255,.6)",
+          boxShadow: "0 0 8px rgba(91,140,255,.6)",
+          pointerEvents: "none",
+        }} />
+      ))}
+
       {hover && (
         <div style={{
           position: "absolute",
@@ -126,6 +151,7 @@ export function NetworkMap({
             <Legend c="var(--accent)" t="OPTIMAL" />
             <Legend c="var(--warn)"   t="DEGRADED" />
             <Legend c="var(--crit)"   t="CRITICAL" />
+            {mode === "public" && <Legend c="var(--info)" t="USER REPORT" round />}
           </div>
         </>
       )}
@@ -133,10 +159,15 @@ export function NetworkMap({
   );
 }
 
-function Legend({ c, t }: { c: string; t: string }) {
+function Legend({ c, t, round }: { c: string; t: string; round?: boolean }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--ink-2)", letterSpacing: ".10em" }}>
-      <div style={{ width: 8, height: 8, background: c, transform: "rotate(45deg)", boxShadow: `0 0 8px ${c}` }} />
+      <div style={{
+        width: 8, height: 8, background: c,
+        transform: round ? "none" : "rotate(45deg)",
+        borderRadius: round ? "50%" : 0,
+        boxShadow: `0 0 8px ${c}`,
+      }} />
       <span>{t}</span>
     </div>
   );

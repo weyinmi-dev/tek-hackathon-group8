@@ -6,6 +6,7 @@ import { useChatStore } from "@/lib/stores/StoreProvider";
 import type { ChatMessage } from "@/lib/stores/ChatStore";
 import type { SkillTraceEntry } from "@/lib/types";
 import { Btn } from "@/components/UI";
+import { CopilotAttachments } from "@/components/CopilotAttachments";
 
 const SUGGESTED = [
   "Why is Lagos West slow?",
@@ -269,6 +270,9 @@ const Message = observer(function Message({ m }: { m: ChatMessage }) {
         }}
       >
         <FormattedAnswer text={m.content} />
+        {m.attachments && m.attachments.length > 0 && (
+          <CopilotAttachments attachments={m.attachments} />
+        )}
       </div>
     </div>
   );
