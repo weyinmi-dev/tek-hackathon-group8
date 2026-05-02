@@ -45,13 +45,24 @@ public sealed class Tower : Entity
     public int LoadPct { get; private set; }
     public TowerStatus Status { get; private set; }
     public string? Issue { get; private set; }
+    public PowerSource ActivePowerSource { get; private set; }
+    public double FuelLevelLiters { get; private set; }
+    public double FuelCapacityLiters { get; private set; }
     public DateTime UpdatedAtUtc { get; private set; }
 
     public static Tower Create(
         string code, string name, string region,
         double latitude, double longitude, double mapX, double mapY,
-        int signalPct, int loadPct, TowerStatus status, string? issue)
-        => new(Guid.NewGuid(), code, name, region, latitude, longitude, mapX, mapY, signalPct, loadPct, status, issue);
+        int signalPct, int loadPct, TowerStatus status, string? issue,
+        PowerSource activePowerSource = PowerSource.Grid,
+        double fuelLevelLiters = 0, double fuelCapacityLiters = 1000)
+    {
+        var tower = new Tower(Guid.NewGuid(), code, name, region, latitude, longitude, mapX, mapY, signalPct, loadPct, status, issue);
+        tower.ActivePowerSource = activePowerSource;
+        tower.FuelLevelLiters = fuelLevelLiters;
+        tower.FuelCapacityLiters = fuelCapacityLiters;
+        return tower;
+    }
 
     public void UpdateMetrics(int signalPct, int loadPct, TowerStatus status, string? issue)
     {
@@ -60,6 +71,40 @@ public sealed class Tower : Entity
         Status = status;
         Issue = issue;
         UpdatedAtUtc = DateTime.UtcNow;
+    }
+
+    /// <summary>
+    /// Updates the power source and fuel metrics for this tower, and detects anomalous fuel drops indicating theft.
+    /// </summary>
+    /// <param name="activePowerSource">The power source currently driving the tower.</param>
+    /// <param name="newFuelLevelLiters">The new fuel reading from the IoT sensor.</param>
+    /// <returns>True if a critical theft is detected; otherwise false.</returns>
+    public bool UpdatePowerMetrics(PowerSource activePowerSource, double newFuelLevelLiters)
+    {
+        // Detect sudden unnatural drops (e.g. > 50 liters drop between readings)
+        bool isTheftDetected = false;
+        double oldFuelLevel = FuelLevelLiters;
+        
+        if (ActivePowerSource == PowerSource.Generator && (oldFuelLevel - newFuelLevelLiters) > 50)
+        {
+            isTheftDetected = true;
+        }
+        else if (ActivePowerSource != PowerSource.Generator && (oldFuelLevel - newFuelLevelLiters) > 10)
+        {
+            // If generator is OFF, fuel shouldn't drop at all
+            isTheftDetected = true;
+        }
+
+        ActivePowerSource = activePowerSource;
+        FuelLevelLiters = newFuelLevelLiters;
+        UpdatedAtUtc = DateTime.UtcNow;
+
+        if (isTheftDetected)
+        {
+            Raise(new Modules.Network.Domain.Towers.Events.FuelTheftDetectedDomainEvent(Id, Code, oldFuelLevel, newFuelLevelLiters));
+        }
+
+        return isTheftDetected;
     }
 }
 
@@ -70,4 +115,7 @@ public interface ITowerRepository
     Task<IReadOnlyList<Tower>> ListByRegionAsync(string region, CancellationToken cancellationToken = default);
     Task AddRangeAsync(IEnumerable<Tower> towers, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
+    Task UpdateAsync(Tower tower, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Tower>> GetLowFuelTowersAsync(double fuelThresholdLiters, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<Tower>> GetActiveGeneratorTowersAsync(CancellationToken cancellationToken = default);
 }

@@ -19,4 +19,26 @@ internal sealed class TowerRepository(NetworkDbContext db) : ITowerRepository
         await db.Towers.AddRangeAsync(towers, ct);
 
     public Task<int> CountAsync(CancellationToken ct = default) => db.Towers.CountAsync(ct);
+
+    public Task UpdateAsync(Tower tower, CancellationToken cancellationToken = default)
+    {
+        db.Towers.Update(tower);
+        return Task.CompletedTask;
+    }
+
+    public async Task<IReadOnlyList<Tower>> GetLowFuelTowersAsync(double fuelThresholdLiters, CancellationToken cancellationToken = default)
+    {
+        return await db.Towers.AsNoTracking()
+            .Where(t => t.FuelLevelLiters <= fuelThresholdLiters)
+            .OrderBy(t => t.FuelLevelLiters)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<Tower>> GetActiveGeneratorTowersAsync(CancellationToken cancellationToken = default)
+    {
+        return await db.Towers.AsNoTracking()
+            .Where(t => t.ActivePowerSource == PowerSource.Generator)
+            .OrderBy(t => t.Code)
+            .ToListAsync(cancellationToken);
+    }
 }

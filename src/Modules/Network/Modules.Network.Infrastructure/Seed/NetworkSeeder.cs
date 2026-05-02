@@ -34,10 +34,23 @@ public static class NetworkSeeder
             ("TWR-OJO-002", "Festac Town","Festac",6.469,3.290,8,68,60,79,TowerStatus.Warn,"Crowd-sourced reports +40%"),
         };
 
+        var rnd = new Random(1337); // Fixed seed for reproducible demo
+
         foreach ((string code, string name, string region, double lat, double lng, double x, double y, int sig, int load, TowerStatus status, string? issue) s in seeds)
         {
+            PowerSource activePower = (PowerSource)rnd.Next(0, 4); // Randomly 0-3
+            double capacity = 1000.0;
+            double fuel = rnd.NextDouble() * 800 + 100; // Between 100 and 900
+
+            // If it's a specific tower we want to demo low fuel, let's force it
+            if (s.code == "TWR-LAG-W-014")
+            {
+                activePower = PowerSource.Generator;
+                fuel = 150.0;
+            }
+
             await db.Towers.AddAsync(
-                Tower.Create(s.code, s.name, s.region, s.lat, s.lng, s.x, s.y, s.sig, s.load, s.status, s.issue), ct);
+                Tower.Create(s.code, s.name, s.region, s.lat, s.lng, s.x, s.y, s.sig, s.load, s.status, s.issue, activePower, fuel, capacity), ct);
         }
         await db.SaveChangesAsync(ct);
     }
