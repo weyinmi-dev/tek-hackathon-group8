@@ -15,6 +15,8 @@ const CATEGORIES = [
   "NetworkDiagnostic",
   "TowerPerformance",
   "AlertHistory",
+  "EnergySiteSnapshot",
+  "EnergyAnomaly",
 ];
 
 const STATUS_TONE: Record<IndexingStatus, "ok" | "warn" | "crit" | "info" | "neutral"> = {
@@ -22,6 +24,7 @@ const STATUS_TONE: Record<IndexingStatus, "ok" | "warn" | "crit" | "info" | "neu
   Pending: "info",
   InProgress: "warn",
   Failed: "crit",
+  Rejected: "neutral",
 };
 
 export default function DocumentsPage() {
@@ -65,8 +68,9 @@ export default function DocumentsPage() {
         sub={`${docs.length} documents · ${indexedCount} indexed · ${formatBytes(totalSize)} stored`}
         right={isManager(user?.role) ? (
           <div style={{ display: "flex", gap: 6 }}>
+            {isAdmin(user?.role) && <Btn onClick={() => refresh()}>↻ Sync All</Btn>}
             <Btn onClick={() => setLinkOpen(true)}>+ Link cloud</Btn>
-            <Btn primary onClick={() => setUploadOpen(true)}>+ Upload</Btn>
+            <Btn primary onClick={() => setUploadOpen(true)}>+ Upload (AI Verified)</Btn>
           </div>
         ) : undefined}
       />
@@ -101,6 +105,11 @@ export default function DocumentsPage() {
                 </div>
                 {d.lastIndexError && (
                   <div className="mono" style={{ fontSize: 10, color: "var(--crit)", marginTop: 2 }}>{d.lastIndexError}</div>
+                )}
+                {d.rejectionReason && (
+                  <div className="mono" style={{ fontSize: 10, color: "var(--accent)", marginTop: 2, borderLeft: "2px solid var(--accent)", paddingLeft: 6 }}>
+                    <b>REJECTED:</b> {d.rejectionReason}
+                  </div>
                 )}
               </div>
               <Pill tone={STATUS_TONE[d.status]} dot>{d.status}</Pill>

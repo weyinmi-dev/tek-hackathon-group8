@@ -153,12 +153,14 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeStore, PgVectorKnowledgeStore>();
         services.AddScoped<IRagIndexer, RagIndexer>();
         services.AddScoped<IRagRetriever, RagRetriever>();
+        services.AddScoped<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentSeeder>();
 
         // Energy → knowledge bridge: a scoped indexer service + a hosted background
         // worker that re-syncs Site/Anomaly state every 5 minutes so the Copilot can
         // ground "why did Surulere consume more diesel yesterday" answers in fresh data.
         services.AddScoped<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexer>();
         services.AddHostedService<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexerService>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentWatcherService>();
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         bool useAzureEmbeddings =
@@ -264,6 +266,11 @@ public static class DependencyInjection
         services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, SharePointDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, AzureBlobDocumentStorageProvider>();
+        services.AddSingleton<IDocumentStorageProvider, WebLinkDocumentStorageProvider>();
+
+        // Add a standard HttpClient for the cloud/web providers to use
+        services.AddHttpClient<OneDriveDocumentStorageProvider>();
+        services.AddHttpClient<WebLinkDocumentStorageProvider>();
 
         services.AddSingleton<IDocumentStorageRegistry, DocumentStorageRegistry>();
         // DefaultDocumentTextExtractor dispatches on content type (PDF / text / unsupported).
@@ -271,6 +278,7 @@ public static class DependencyInjection
         // class comment for the full story. Singleton is fine; it's stateless apart from
         // the injected logger.
         services.AddSingleton<IDocumentTextExtractor, DefaultDocumentTextExtractor>();
+        services.AddScoped<IDocumentValidator, AiDocumentValidator>();
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
     }
 
