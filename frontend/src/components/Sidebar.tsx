@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { observer } from "mobx-react-lite";
 import { useAuth } from "@/lib/auth";
+import { useAlertsStore, useAnomaliesStore } from "@/lib/stores/StoreProvider";
 
 type Role = "engineer" | "manager" | "admin" | "viewer";
 type NavItem = {
@@ -10,7 +12,6 @@ type NavItem = {
   label: string;
   icon: string;
   section: string;
-  badge?: string;
   // Allowed roles. Empty/undefined → visible to anyone signed in.
   roles?: Role[];
 };
@@ -21,10 +22,10 @@ const NAV: NavItem[] = [
   { id: "/dashboard", label: "Command Center", icon: "◉", section: "OPS" },
   { id: "/copilot",   label: "Copilot",        icon: "✦", section: "OPS" },
   { id: "/map",       label: "Network Map",    icon: "◎", section: "OPS" },
-  { id: "/alerts",    label: "Alerts",         icon: "△", section: "OPS", badge: "14" },
+  { id: "/alerts",    label: "Alerts",         icon: "△", section: "OPS" },
   { id: "/documents", label: "Knowledge",      icon: "❒", section: "OPS" },
   { id: "/energy",    label: "Energy Sites",   icon: "⚡", section: "ENERGY" },
-  { id: "/anomalies", label: "Anomalies",      icon: "⚠", section: "ENERGY", badge: "3" },
+  { id: "/anomalies", label: "Anomalies",      icon: "⚠", section: "ENERGY" },
   { id: "/optimize",  label: "Optimization",   icon: "∿", section: "ENERGY" },
   { id: "/insights",  label: "Dashboard",      icon: "▤", section: "INSIGHTS" },
   { id: "/users",     label: "Users & Roles",  icon: "◆", section: "ADMIN", roles: ["admin", "manager"] },
@@ -44,6 +45,20 @@ export const Sidebar = observer(function Sidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const role = (user?.role ?? "viewer") as Role;
+
+  const alertsStore    = useAlertsStore();
+  const anomaliesStore = useAnomaliesStore();
+
+  useEffect(() => {
+    void alertsStore.load();
+    void anomaliesStore.load();
+  }, [alertsStore, anomaliesStore]);
+
+  function getBadge(id: string): number | null {
+    if (id === "/alerts")    return alertsStore.counts.all || null;
+    if (id === "/anomalies") return anomaliesStore.visible.length || null;
+    return null;
+  }
 
   const initials = (user?.fullName ?? "  ").split(" ").map(s => s[0]).join("").slice(0, 2).toUpperCase();
 
@@ -94,11 +109,11 @@ export const Sidebar = observer(function Sidebar() {
                       fontFamily: "var(--mono)", fontSize: 12,
                     }}>{n.icon}</span>
                     <span style={{ flex: 1 }}>{n.label}</span>
-                    {n.badge && (
+                    {getBadge(n.id) !== null && (
                       <span className="mono" style={{
                         fontSize: 9.5, padding: "2px 6px", borderRadius: 3,
                         background: "var(--crit)", color: "#fff", fontWeight: 600,
-                      }}>{n.badge}</span>
+                      }}>{getBadge(n.id)}</span>
                     )}
                     {active && <span style={{ position: "absolute", left: 0, top: 8, bottom: 8, width: 2, background: "var(--accent)", borderRadius: 2 }} />}
                   </button>
