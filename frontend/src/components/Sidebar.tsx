@@ -55,8 +55,8 @@ export const Sidebar = observer(function Sidebar() {
   }, [alertsStore, anomaliesStore]);
 
   function getBadge(id: string): number | null {
-    if (id === "/alerts")    return alertsStore.counts.all || null;
-    if (id === "/anomalies") return anomaliesStore.visible.length || null;
+    if (id === "/alerts")    return alertsStore.counts.all;
+    if (id === "/anomalies") return anomaliesStore.visible.length;
     return null;
   }
 
