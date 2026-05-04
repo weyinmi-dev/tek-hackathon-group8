@@ -5,6 +5,7 @@ using Modules.Alerts.Application.Alerts.Acknowledge;
 using Modules.Alerts.Application.Alerts.Assign;
 using Modules.Alerts.Application.Alerts.Dispatch;
 using Modules.Alerts.Application.Alerts.GetAlerts;
+using Modules.Alerts.Application.Alerts.GetCounts;
 using Modules.Identity.Application.Authorization;
 using SharedKernel;
 using Web.Api.Endpoints.Geo;
@@ -55,6 +56,16 @@ public sealed class Get : IEndpoint
                 .Select(a => AlertWithGeo.From(a, geoMap.GetValueOrDefault(a.Tower)))
                 .ToList();
             return Results.Ok(enriched);
+        })
+        .WithTags(Tags.Alerts);
+
+        // GET /api/alerts/counts — severity tallies for sidebar/filter chips.
+        // Uses a DB-side GROUP BY so the sidebar badge doesn't pull the full alert
+        // payload (with geo enrichment) just to read .length on app start.
+        app.MapGet("alerts/counts", [Authorize] async (ISender sender, CancellationToken ct) =>
+        {
+            Result<AlertCountsDto> result = await sender.Send(new GetAlertCountsQuery(), ct);
+            return result.IsFailure ? CustomResults.Problem(result) : Results.Ok(result.Value);
         })
         .WithTags(Tags.Alerts);
 

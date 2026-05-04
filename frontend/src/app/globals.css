@@ -10,9 +10,9 @@
   --ink-2:     #a8b0bd;
   --ink-3:     #6a727f;
   --ink-4:     #444a55;
-  --accent:    #00e5a0;
-  --accent-dim: rgba(0,229,160,.14);
-  --accent-line: rgba(0,229,160,.32);
+  --accent:    #ffcb05;
+  --accent-dim: rgba(255,203,5,.14);
+  --accent-line: rgba(255,203,5,.32);
   --warn:      #ffb547;
   --crit:      #ff5470;
   --info:      #5b8cff;
@@ -43,9 +43,9 @@ body.theme-light {
   --ink-2:     #525864;
   --ink-3:     #838894;
   --ink-4:     #b6bbc5;
-  --accent:    #0e8b62;
-  --accent-dim: rgba(14,139,98,.10);
-  --accent-line: rgba(14,139,98,.28);
+  --accent:    #a37800;
+  --accent-dim: rgba(163,120,0,.10);
+  --accent-line: rgba(163,120,0,.28);
 
   --bg-hero: radial-gradient(ellipse at 30% 70%, #e8ede6 0%, #f6f5f0 70%);
   --bg-map:  radial-gradient(ellipse at 50% 60%, #ecefe7 0%, #f1efe8 70%);

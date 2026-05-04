@@ -22,6 +22,9 @@ interface AlertsSnapshot {
  * Persistence shape is intentionally tiny — selecting "selectedId" not "selected"
  * means we don't replay stale full alert payloads after a server-side change.
  */
+type CountsShape = { all: number; critical: number; warn: number; info: number };
+const ZERO_COUNTS: CountsShape = { all: 0, critical: 0, warn: 0, info: 0 };
+
 export class AlertsStore {
   alerts: Alert[] = [];
   filter: AlertSeverityFilter = "all";
@@ -31,6 +34,7 @@ export class AlertsStore {
   acking: string | null = null;
   actionToast: { id: string; msg: string } | null = null;
   hasHydrated = false;
+  counts: CountsShape = ZERO_COUNTS;
 
   private _disposePersist: (() => void) | null = null;
   private _toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,15 +59,6 @@ export class AlertsStore {
     return this.alerts.find(a => a.id === this.selectedId) ?? null;
   }
 
-  get counts() {
-    return {
-      all: this.alerts.length,
-      critical: this.alerts.filter(a => a.sev === "critical").length,
-      warn: this.alerts.filter(a => a.sev === "warn").length,
-      info: this.alerts.filter(a => a.sev === "info").length,
-    };
-  }
-
   setFilter(f: AlertSeverityFilter): void {
     this.filter = f;
   }
@@ -85,6 +80,10 @@ export class AlertsStore {
         const stillThere = this.selectedId && r.find(a => a.id === this.selectedId);
         if (!stillThere) this.selectedId = r[0]?.id ?? null;
       });
+      // Refresh counts in the background — keeps the sidebar badge live after
+      // ack/assign/dispatch without forcing the alerts list to be re-fetched
+      // for callers that only need totals.
+      void this.loadCounts();
     } catch (e) {
       // Surface the failure: console for DevTools + store.error for an in-page
       // banner. Without this both an empty fleet and a 500 response render as
@@ -93,6 +92,18 @@ export class AlertsStore {
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
     } finally {
       runInAction(() => { this.loading = false; });
+    }
+  }
+
+  // Lightweight: hits /alerts/counts (DB-side GROUP BY, no geo enrichment).
+  // The sidebar uses this on mount instead of load() so first paint isn't
+  // blocked on the full alerts payload + OSM lookups.
+  async loadCounts(): Promise<void> {
+    try {
+      const r = await api.alertsCounts();
+      runInAction(() => { this.counts = r; });
+    } catch (e) {
+      console.warn("[AlertsStore] loadCounts failed:", e);
     }
   }
 

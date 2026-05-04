@@ -28,4 +28,13 @@ internal sealed class AlertRepository(AlertsDbContext db) : IAlertRepository
         await db.Alerts.AddRangeAsync(alerts, cancellationToken);
 
     public Task<int> CountAsync(CancellationToken cancellationToken = default) => db.Alerts.CountAsync(cancellationToken);
+
+    public async Task<IReadOnlyDictionary<AlertSeverity, int>> CountBySeverityAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await db.Alerts.AsNoTracking()
+            .GroupBy(a => a.Severity)
+            .Select(g => new { Sev = g.Key, Count = g.Count() })
+            .ToListAsync(cancellationToken);
+        return rows.ToDictionary(r => r.Sev, r => r.Count);
+    }
 }

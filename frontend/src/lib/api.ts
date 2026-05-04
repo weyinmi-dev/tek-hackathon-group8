@@ -9,6 +9,7 @@
 import type {
   Alert,
   CopilotAnswer,
+  GeoSummary,
   LoginResponse,
   MapResponse,
   MetricsResponse,
@@ -191,6 +192,10 @@ export const api = {
       body: JSON.stringify({ query, conversationId: conversationId ?? null }),
     }),
   map: () => request<MapResponse>("/map"),
+  // On-demand OSM geo context for a single tower. Returns null when the OSM
+  // lookup is unavailable — render conditionally rather than blocking the panel.
+  geoForSite: (siteCode: string) =>
+    request<GeoSummary | null>(`/geo/sites/${encodeURIComponent(siteCode)}`),
   alerts: (opts: { severity?: string; active?: boolean } = {}) => {
     const q = new URLSearchParams();
     if (opts.severity) q.set("severity", opts.severity);
@@ -199,6 +204,8 @@ export const api = {
     const suffix = qs ? "?" + qs : "";
     return request<Alert[]>(`/alerts${suffix}`);
   },
+  alertsCounts: () =>
+    request<{ all: number; critical: number; warn: number; info: number }>("/alerts/counts"),
   ackAlert: (id: string) =>
     request<void>(`/alerts/${encodeURIComponent(id)}/ack`, { method: "POST" }),
   assignAlert: (id: string, team: string) =>

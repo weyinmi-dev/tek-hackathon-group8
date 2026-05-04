@@ -50,7 +50,10 @@ export const Sidebar = observer(function Sidebar() {
   const anomaliesStore = useAnomaliesStore();
 
   useEffect(() => {
-    void alertsStore.load();
+    // The sidebar only needs the alert count for its badge — hit the lightweight
+    // /alerts/counts endpoint instead of pulling the full alerts payload (which
+    // includes OSM geo enrichment per tower) at app start.
+    void alertsStore.loadCounts();
     void anomaliesStore.load();
   }, [alertsStore, anomaliesStore]);
 
