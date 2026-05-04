@@ -85,7 +85,7 @@ function McpInner() {
                 padding: "12px 14px",
                 borderBottom: i < plugins.length - 1 ? "1px solid var(--line)" : 0,
                 background: active ? "var(--bg-2)" : "transparent",
-                border: "none", borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
+                borderTop: "none", borderRight: "none", borderLeft: "3px solid " + (active ? "var(--accent)" : "transparent"),
                 color: "var(--ink)", cursor: "pointer",
               }}>
                 <div style={{ fontWeight: 500, fontSize: 13 }}>{p.displayName}</div>

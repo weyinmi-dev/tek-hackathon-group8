@@ -3,11 +3,14 @@ using Modules.Ai.Application.Rag;
 using Modules.Ai.Application.Rag.Indexing;
 using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database;
+using Modules.Ai.Infrastructure.Rag.Indexing;
 using Modules.Ai.Infrastructure.Rag.Seed;
 using Modules.Alerts.Infrastructure.Database;
 using Modules.Alerts.Infrastructure.Seed;
 using Modules.Analytics.Infrastructure.Database;
 using Modules.Analytics.Infrastructure.Seed;
+using Modules.Energy.Infrastructure.Database;
+using Modules.Energy.Infrastructure.Seed;
 using Modules.Identity.Application.Authentication;
 using Modules.Identity.Infrastructure.Database;
 using Modules.Identity.Infrastructure.Seed;
@@ -28,6 +31,7 @@ public static class SeedExtensions
         await NetworkSeeder.SeedAsync(sp.GetRequiredService<NetworkDbContext>());
         await AlertsSeeder.SeedAsync(sp.GetRequiredService<AlertsDbContext>());
         await AnalyticsSeeder.SeedAsync(sp.GetRequiredService<AnalyticsDbContext>());
+        await EnergySeeder.SeedAsync(sp.GetRequiredService<EnergyDbContext>());
 
         _ = sp.GetRequiredService<AiDbContext>();
 
@@ -39,6 +43,11 @@ public static class SeedExtensions
                 sp.GetRequiredService<IRagIndexer>(),
                 sp.GetRequiredService<IKnowledgeRepository>(),
                 logger);
+
+            // First-pass energy → knowledge ingestion so the very first Copilot query
+            // already has fresh site / anomaly context to retrieve. The hosted indexer
+            // takes over from here on a 5-minute cadence.
+            await sp.GetRequiredService<EnergyKnowledgeIndexer>().IndexAsync();
         }
     }
 }

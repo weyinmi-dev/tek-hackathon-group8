@@ -14,4 +14,6 @@ public sealed record AlertDto(
     string Cause,
     int Users,
     double Confidence,
-    string Time);
+    string Time,
+    string? AssignedTeam,
+    string? DispatchTarget);

@@ -16,18 +16,41 @@ export default function CommandCenterPage() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [sel, setSel] = useState<Tower | null>(null);
 
+  // Fetch the three feeds independently. Previously this used
+  // `Promise.all([metrics, map, alerts])` with a swallowing catch — if any
+  // single endpoint failed (e.g. alerts → 500 from a transient OSM / Redis
+  // hiccup in geo enrichment), the catch would fire and ALL THREE state
+  // values would stay at their initial empty/null, leaving the dashboard
+  // completely blank with no error visible to the operator.
+  //
+  // We now treat each feed as independent: a failure on one logs a console
+  // warning and leaves the other two panels rendered. Geo enrichment on the
+  // alerts endpoint is best-effort, so it should never fail in practice —
+  // but if it ever does, the map and metrics still render.
   useEffect(() => {
     let alive = true;
-    async function load() {
+    async function loadOne<T>(label: string, fn: () => Promise<T>, apply: (v: T) => void): Promise<void> {
       try {
-        const [m, mp, al] = await Promise.all([api.metrics(), api.map(), api.alerts()]);
-        if (!alive) return;
-        setMetrics(m); setMap(mp); setAlerts(al);
-        setSel(mp.towers.find(t => t.status === "critical") ?? mp.towers[0] ?? null);
-      } catch { /* show stale or empty */ }
+        const v = await fn();
+        if (alive) apply(v);
+      } catch (e) {
+        console.warn(`[dashboard] ${label} fetch failed:`, e);
+      }
     }
-    load();
-    const i = setInterval(load, 30_000);
+    async function load(): Promise<void> {
+      await Promise.allSettled([
+        loadOne("metrics", () => api.metrics(), setMetrics),
+        loadOne("map", () => api.map(), (mp) => {
+          setMap(mp);
+          // Only override the selection if nothing's selected yet — preserves the
+          // operator's pin across 30s refreshes.
+          setSel((cur) => cur ?? mp.towers.find((t) => t.status === "critical") ?? mp.towers[0] ?? null);
+        }),
+        loadOne("alerts", () => api.alerts(), setAlerts),
+      ]);
+    }
+    void load();
+    const i = setInterval(() => void load(), 30_000);
     return () => { alive = false; clearInterval(i); };
   }, []);
 

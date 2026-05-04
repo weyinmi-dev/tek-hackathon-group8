@@ -36,4 +36,5 @@ public interface IAuditRepository
     Task<IReadOnlyList<AuditEntry>> ListRecentAsync(int take, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
     Task AddRangeAsync(IEnumerable<AuditEntry> entries, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<AuditEntry>> ListByActionSinceAsync(string action, DateTime sinceUtc, int take, CancellationToken cancellationToken = default);
 }

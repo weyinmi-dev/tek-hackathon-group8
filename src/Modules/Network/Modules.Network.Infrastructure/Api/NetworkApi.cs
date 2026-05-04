@@ -38,5 +38,5 @@ internal sealed class NetworkApi(ITowerRepository towers) : INetworkApi
     }
 
     private static TowerSnapshot Map(Tower t) =>
-        new(t.Code, t.Name, t.Region, t.SignalPct, t.LoadPct, t.Status.ToWire(), t.Issue);
+        new(t.Code, t.Name, t.Region, t.SignalPct, t.LoadPct, t.Status.ToWire(), t.Issue, t.Latitude, t.Longitude);
 }

@@ -16,6 +16,10 @@ internal sealed class AlertConfiguration : IEntityTypeConfiguration<Alert>
         builder.Property(a => a.TowerCode).HasMaxLength(64).IsRequired();
         builder.Property(a => a.AiCause).HasMaxLength(512).IsRequired();
         builder.Property(a => a.AcknowledgedBy).HasMaxLength(64);
+        builder.Property(a => a.AssignedTeam).HasMaxLength(64);
+        builder.Property(a => a.AssignedBy).HasMaxLength(64);
+        builder.Property(a => a.DispatchTarget).HasMaxLength(128);
+        builder.Property(a => a.DispatchedBy).HasMaxLength(64);
         builder.Property(a => a.Severity).HasConversion<int>();
         builder.Property(a => a.Status).HasConversion<int>();
         builder.HasIndex(a => a.Code).IsUnique();

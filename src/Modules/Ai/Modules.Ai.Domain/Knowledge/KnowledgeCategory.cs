@@ -14,4 +14,8 @@ public enum KnowledgeCategory
     EngineeringSop = 3,
     TowerPerformance = 4,
     AlertHistory = 5,
+    // Energy module: per-site fuel/battery/solar narratives so the Copilot can answer
+    // "why did Surulere consume more diesel yesterday" with grounded historical context.
+    EnergySiteSnapshot = 6,
+    EnergyAnomaly = 7,
 }

@@ -21,7 +21,8 @@ internal sealed class GetAlertsQueryHandler(IAlertRepository alerts)
             .OrderByDescending(a => a.RaisedAtUtc)
             .Select(a => new AlertDto(
                 a.Code, a.Severity.ToWire(), a.Status.ToWire(), a.Title, a.Region, a.TowerCode,
-                a.AiCause, a.SubscribersAffected, a.Confidence, FormatRelative(a.RaisedAtUtc)))
+                a.AiCause, a.SubscribersAffected, a.Confidence, FormatRelative(a.RaisedAtUtc),
+                a.AssignedTeam, a.DispatchTarget))
             .ToList();
 
         return Result.Success(dtos);

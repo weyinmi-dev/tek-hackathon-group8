@@ -10,8 +10,25 @@ internal sealed class CacheService(IDistributedCache cache) : ICacheService
     public async Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
         byte[]? bytes = await cache.GetAsync(key, cancellationToken);
+        if (bytes is null)
+        {
+            return default;
+        }
 
-        return bytes is null ? default : Deserialize<T>(bytes);
+        // Defensive: if a model shape changes (e.g. a record gets a new positional ctor
+        // arg), pre-existing cache entries may no longer be deserializable into TResponse.
+        // Treat any deserialization failure as a cache miss + evict the bad entry, so the
+        // pipeline falls through to the live handler and overwrites the slot with a fresh
+        // payload. Without this, an old blob silently 500s every request until its TTL.
+        try
+        {
+            return Deserialize<T>(bytes);
+        }
+        catch (JsonException)
+        {
+            await cache.RemoveAsync(key, cancellationToken);
+            return default;
+        }
     }
 
     public Task SetAsync<T>(
