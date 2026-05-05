@@ -88,11 +88,6 @@ public static class DependencyInjection
         // sub-options) can consume it via constructor injection rather than re-binding the section.
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
 
-        AddRagPipeline(services, rag, configuration);
-        AddDocumentPipeline(services, configuration);
-        AddOsmLayer(services, configuration);
-        AddMcpPluginLayer(services);
-
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
 
         // Provider selection. AzureOpenAi requires endpoint + key + deployment.
@@ -101,6 +96,11 @@ public static class DependencyInjection
             string.Equals(ai.Provider, "AzureOpenAi", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(ai.AzureOpenAi.Endpoint) &&
             !string.IsNullOrWhiteSpace(ai.AzureOpenAi.ApiKey);
+
+        AddRagPipeline(services, rag, configuration);
+        AddDocumentPipeline(services, configuration, useAzure);
+        AddOsmLayer(services, configuration);
+        AddMcpPluginLayer(services);
 
         if (useAzure)
         {
@@ -153,12 +153,15 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeStore, PgVectorKnowledgeStore>();
         services.AddScoped<IRagIndexer, RagIndexer>();
         services.AddScoped<IRagRetriever, RagRetriever>();
+        services.AddScoped<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentSeeder>();
 
         // Energy → knowledge bridge: a scoped indexer service + a hosted background
         // worker that re-syncs Site/Anomaly state every 5 minutes so the Copilot can
         // ground "why did Surulere consume more diesel yesterday" answers in fresh data.
         services.AddScoped<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexer>();
         services.AddHostedService<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexerService>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentSeederService>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentWatcherService>();
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         bool useAzureEmbeddings =
@@ -252,7 +255,7 @@ public static class DependencyInjection
         services.AddHostedService<GeoCacheWarmer>();
     }
 
-    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration)
+    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration, bool useAzure)
     {
         DocumentsOptions docs = configuration.GetSection(DocumentsOptions.SectionName).Get<DocumentsOptions>() ?? new DocumentsOptions();
         services.AddSingleton(docs);
@@ -266,9 +269,13 @@ public static class DependencyInjection
         // operator is ready to enable that source — no changes required to the ingestion
         // pipeline or the document handlers.
         services.AddSingleton<IDocumentStorageProvider, GoogleDriveDocumentStorageProvider>();
-        services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
+        // services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, SharePointDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, AzureBlobDocumentStorageProvider>();
+        services.AddSingleton<IDocumentStorageProvider, WebLinkDocumentStorageProvider>();
+
+        // Add a standard HttpClient for the cloud/web providers to use
+        services.AddHttpClient<WebLinkDocumentStorageProvider>();
 
         services.AddSingleton<IDocumentStorageRegistry, DocumentStorageRegistry>();
         // DefaultDocumentTextExtractor dispatches on content type (PDF / text / unsupported).
@@ -276,7 +283,16 @@ public static class DependencyInjection
         // class comment for the full story. Singleton is fine; it's stateless apart from
         // the injected logger.
         services.AddSingleton<IDocumentTextExtractor, DefaultDocumentTextExtractor>();
+        if (useAzure)
+        {
+            services.AddScoped<IDocumentValidator, AiDocumentValidator>();
+        }
+        else
+        {
+            services.AddScoped<IDocumentValidator, MockDocumentValidator>();
+        }
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+        services.AddScoped<IDocumentSyncService, DocumentSyncService>();
     }
 
     internal static string NormalizeAzureOpenAiEndpoint(string raw)

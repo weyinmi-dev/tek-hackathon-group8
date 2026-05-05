@@ -16,17 +16,39 @@ internal sealed class ManagedDocumentRepository(AiDbContext db) : IManagedDocume
 
     public async Task<IReadOnlyList<ManagedDocument>> ListAsync(CancellationToken cancellationToken = default) =>
         await db.ManagedDocuments
-            .AsNoTracking()
             .OrderByDescending(d => d.UploadedAtUtc)
             .ToListAsync(cancellationToken);
 
+    public async Task<IReadOnlyList<ManagedDocument>> ListPagedAsync(int page, int pageSize, string? searchTerm = null, CancellationToken cancellationToken = default)
+    {
+        IQueryable<ManagedDocument> query = db.ManagedDocuments;
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            string s = $"%{searchTerm}%";
+            query = query.Where(d => EF.Functions.ILike(d.Title, s) || EF.Functions.ILike(d.FileName, s));
+        }
+
+        return await query
+            .OrderByDescending(d => d.UploadedAtUtc)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<ManagedDocument>> ListByStatusAsync(IndexingStatus status, CancellationToken cancellationToken = default) =>
         await db.ManagedDocuments
-            .AsNoTracking()
             .Where(d => d.Status == status)
             .OrderByDescending(d => d.UploadedAtUtc)
             .ToListAsync(cancellationToken);
 
-    public Task<int> CountAsync(CancellationToken cancellationToken = default) =>
-        db.ManagedDocuments.CountAsync(cancellationToken);
+    public Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default)
+    {
+        IQueryable<ManagedDocument> query = db.ManagedDocuments;
+        if (!string.IsNullOrWhiteSpace(searchTerm))
+        {
+            string s = $"%{searchTerm}%";
+            query = query.Where(d => EF.Functions.ILike(d.Title, s) || EF.Functions.ILike(d.FileName, s));
+        }
+        return query.CountAsync(cancellationToken);
+    }
 }

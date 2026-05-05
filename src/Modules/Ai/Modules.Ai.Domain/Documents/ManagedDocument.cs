@@ -63,6 +63,7 @@ public sealed class ManagedDocument : Entity
     public IndexingStatus Status { get; private set; }
     public DateTime? IndexedAtUtc { get; private set; }
     public string? LastIndexError { get; private set; }
+    public string? RejectionReason { get; private set; }
     public int Version { get; private set; }
     public Guid? KnowledgeDocumentId { get; private set; }
 
@@ -113,6 +114,13 @@ public sealed class ManagedDocument : Entity
     {
         Status = IndexingStatus.Failed;
         LastIndexError = string.IsNullOrWhiteSpace(error) ? "Unknown failure" : error;
+    }
+
+    public void MarkRejected(string reason)
+    {
+        Status = IndexingStatus.Rejected;
+        RejectionReason = string.IsNullOrWhiteSpace(reason) ? "No reason provided by AI validator." : reason;
+        LastIndexError = null;
     }
 
     public void RecordNewVersion(string storageKey, long sizeBytes, string contentType, string? externalReference)

@@ -197,9 +197,10 @@ export type DocumentSource =
   | "GoogleDrive"
   | "OneDrive"
   | "SharePoint"
-  | "AzureBlob";
+  | "AzureBlob"
+  | "WebLink";
 
-export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed";
+export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed" | "Rejected";
 
 export type DocumentListItem = {
   id: string;
@@ -216,6 +217,7 @@ export type DocumentListItem = {
   uploadedAtUtc: string;
   indexedAtUtc: string | null;
   lastIndexError: string | null;
+  rejectionReason: string | null;
   externalReference: string | null;
 };
 

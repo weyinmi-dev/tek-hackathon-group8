@@ -13,4 +13,5 @@ public enum DocumentSource
     OneDrive = 2,
     SharePoint = 3,
     AzureBlob = 4,
+    WebLink = 10,
 }

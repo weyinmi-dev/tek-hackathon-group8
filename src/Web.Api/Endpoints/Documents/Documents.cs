@@ -5,6 +5,7 @@ using Modules.Ai.Application.Documents.DeleteDocument;
 using Modules.Ai.Application.Documents.LinkCloudDocument;
 using Modules.Ai.Application.Documents.ListDocuments;
 using Modules.Ai.Application.Documents.ReindexDocument;
+using Modules.Ai.Application.Documents.SyncDocuments;
 using Modules.Ai.Application.Documents.UploadDocument;
 using Modules.Ai.Application.Rag.Storage;
 using Modules.Ai.Domain.Documents;
@@ -22,9 +23,11 @@ public sealed class Documents : IEndpoint
     {
         // GET /api/documents → engineer+ can browse the indexed corpus
         app.MapGet("documents", [Authorize(Policy = Policies.RequireEngineer)]
-            async (ISender sender, CancellationToken ct) =>
+            async (int? page, int? pageSize, string? search, ISender sender, CancellationToken ct) =>
         {
-            Result<IReadOnlyList<DocumentListItem>> result = await sender.Send(new ListDocumentsQuery(), ct);
+            int p = page is > 0 ? page.Value : 1;
+            int ps = pageSize is > 0 ? pageSize.Value : 10;
+            Result<PagedDocumentResult> result = await sender.Send(new ListDocumentsQuery(p, ps, search), ct);
             return result.Match(Results.Ok, CustomResults.Problem);
         })
         .WithTags(Tags.Documents);
@@ -125,10 +128,44 @@ public sealed class Documents : IEndpoint
         .WithTags(Tags.Documents);
 
         // DELETE /api/documents/{id} → admin only.
-        app.MapDelete("documents/{id:guid}", [Authorize(Policy = Policies.RequireAdmin)]
+        app.MapDelete("documents/{id:guid}", [Authorize(Policy = Policies.RequireEngineer)]
             async (Guid id, ISender sender, CancellationToken ct) =>
         {
             Result result = await sender.Send(new DeleteDocumentCommand(id), ct);
+            return result.Match(Results.NoContent, CustomResults.Problem);
+        })
+        .WithTags(Tags.Documents);
+        
+        // GET /api/documents/{id}/download → engineer+ can retrieve the original file.
+        app.MapGet("documents/{id:guid}/download", [Authorize(Policy = Policies.RequireEngineer)]
+            async (Guid id, IManagedDocumentRepository documents, IDocumentStorageRegistry storage, CancellationToken ct) =>
+        {
+            ManagedDocument? doc = await documents.GetByIdAsync(id, ct);
+            if (doc is null) return Results.NotFound();
+            
+            if (!storage.IsAvailable(doc.Source))
+            {
+                return Results.Problem($"Storage provider {doc.Source} is not connected.", statusCode: 400);
+            }
+            
+            try
+            {
+                IDocumentStorageProvider provider = storage.For(doc.Source);
+                Stream stream = await provider.OpenReadAsync(doc.StorageKey, ct);
+                return Results.File(stream, doc.ContentType, doc.FileName);
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem($"Failed to retrieve file from {doc.Source}: {ex.Message}");
+            }
+        })
+        .WithTags(Tags.Documents);
+
+        // POST /api/documents/sync → admin only. Triggers manual discovery on all seeders.
+        app.MapPost("documents/sync", [Authorize(Policy = Policies.RequireAdmin)]
+            async (ISender sender, CancellationToken ct) =>
+        {
+            Result result = await sender.Send(new SyncDocumentsCommand(), ct);
             return result.Match(Results.NoContent, CustomResults.Problem);
         })
         .WithTags(Tags.Documents);

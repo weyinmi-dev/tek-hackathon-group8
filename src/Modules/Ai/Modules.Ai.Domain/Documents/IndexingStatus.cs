@@ -10,4 +10,5 @@ public enum IndexingStatus
     InProgress = 1,
     Indexed = 2,
     Failed = 3,
+    Rejected = 4,
 }

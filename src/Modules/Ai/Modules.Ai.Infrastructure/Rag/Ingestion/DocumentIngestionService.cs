@@ -17,6 +17,7 @@ internal sealed class DocumentIngestionService(
     IManagedDocumentRepository documents,
     IDocumentStorageRegistry storage,
     IDocumentTextExtractor extractor,
+    IDocumentValidator validator,
     IRagIndexer indexer,
     IUnitOfWork uow,
     ILogger<DocumentIngestionService> logger) : IDocumentIngestionService
@@ -38,6 +39,17 @@ internal sealed class DocumentIngestionService(
             if (string.IsNullOrWhiteSpace(body))
             {
                 doc.MarkFailed("Extractor returned empty text — the document may be a scanned image or otherwise contain no extractable text layer.");
+                await uow.SaveChangesAsync(CancellationToken.None);
+                return new IndexResult(0, 0);
+            }
+
+            // AI Quality Gate: validate relevance before indexing
+            string preview = body.Length > 2000 ? body[..2000] : body;
+            var (isValid, reason) = await validator.ValidateAsync(doc.FileName, preview, cancellationToken);
+            if (!isValid)
+            {
+                logger.LogWarning("Ingestion: Document {DocumentId} ({FileName}) rejected by AI: {Reason}", doc.Id, doc.FileName, reason);
+                doc.MarkRejected(reason);
                 await uow.SaveChangesAsync(CancellationToken.None);
                 return new IndexResult(0, 0);
             }

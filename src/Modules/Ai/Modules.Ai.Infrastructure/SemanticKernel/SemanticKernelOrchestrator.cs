@@ -48,9 +48,11 @@ internal sealed class SemanticKernelOrchestrator(
           - RecommendationSkill: operator runbook playbooks (3 concrete actions per cause class)
           - KnowledgeSkill     : RAG over historical incident reports, outage summaries, engineering
                                  SOPs, tower performance trends, alert history, AND historical
-                                 energy / fuel / battery logs. Call search_knowledge for any
-                                 'why', 'how', 'what happened', 'has this happened before',
-                                 or 'show the trend' question.
+                                 energy / fuel / battery logs.
+                                 RULE: Call search_knowledge for ANY 'why', 'how', 'what happened',
+                                 'has this happened before', or 'show the trend' question.
+                                 If the user asks about energy/diesel spikes, search for
+                                 'energy_site_snapshot' or 'energy_anomaly' categories.
           - InternalToolsSkill : MCP-style internal tools — get_network_metrics, get_outages,
                                  analyze_latency, find_best_connectivity. Use for deterministic
                                  numeric summaries and failover targeting.
