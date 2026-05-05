@@ -1,16 +1,21 @@
 import { makeAutoObservable, runInAction } from "mobx";
 import { api } from "@/lib/api";
-import type { MetricsResponse } from "@/lib/types";
+import type { EnergyMetricsResponse, MetricsResponse } from "@/lib/types";
 
 /**
  * Domain store for the Operations Dashboard (Insights). Holds the last fetched
- * metrics payload in memory so flipping between tabs doesn't trigger a flash of
- * empty cards while the new fetch resolves. We do NOT persist the payload —
- * dashboard data is short-lived (24h rolling) and re-fetching on boot keeps it
- * fresh; the win here is *survival across in-session navigation*, not durability.
+ * ops-metrics + energy-metrics payloads in memory so flipping between tabs doesn't
+ * trigger a flash of empty cards while the new fetch resolves. We do NOT persist
+ * the payloads — dashboard data is short-lived (24h rolling) and re-fetching on
+ * boot keeps it fresh; the win here is *survival across in-session navigation*,
+ * not durability.
+ *
+ * The two feeds are loaded independently with allSettled — a transient failure
+ * on /energy/metrics shouldn't blank out the ops panel, and vice versa.
  */
 export class InsightsStore {
   metrics: MetricsResponse | null = null;
+  energy: EnergyMetricsResponse | null = null;
   loading = false;
   error: string | null = null;
 
@@ -38,14 +43,25 @@ export class InsightsStore {
   async refresh(): Promise<void> {
     this.loading = true;
     this.error = null;
-    try {
-      const r = await api.metrics();
-      runInAction(() => { this.metrics = r; });
-    } catch (e) {
-      runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
-    } finally {
-      runInAction(() => { this.loading = false; });
-    }
+    const [opsResult, energyResult] = await Promise.allSettled([
+      api.metrics(),
+      api.energy.metrics(),
+    ]);
+    runInAction(() => {
+      if (opsResult.status === "fulfilled") {
+        this.metrics = opsResult.value;
+      } else {
+        const e = opsResult.reason;
+        this.error = e instanceof Error ? e.message : String(e);
+      }
+      if (energyResult.status === "fulfilled") {
+        this.energy = energyResult.value;
+      } else if (this.error == null) {
+        const e = energyResult.reason;
+        this.error = e instanceof Error ? e.message : String(e);
+      }
+      this.loading = false;
+    });
   }
 
   dispose(): void {

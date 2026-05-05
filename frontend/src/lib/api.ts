@@ -27,6 +27,7 @@ import type {
   DieselTracePoint,
   OptimizationProjection,
   EnergyRecommendation,
+  EnergyMetricsResponse,
 } from "./types";
 
 const API_BASE = "/api";
@@ -288,6 +289,7 @@ export const api = {
   energy: {
     sites: () => request<{ sites: EnergySiteDto[] }>("/energy/sites"),
     kpis: () => request<{ kpis: EnergyKpiDto[] }>("/energy/kpis"),
+    metrics: () => request<EnergyMetricsResponse>("/energy/metrics"),
     anomalies: (take = 50) =>
       request<{ anomalies: EnergyAnomalyDto[] }>(
         `/energy/anomalies?take=${take}`,

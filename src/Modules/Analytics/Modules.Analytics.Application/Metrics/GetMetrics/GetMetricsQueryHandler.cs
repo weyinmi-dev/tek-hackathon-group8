@@ -13,39 +13,143 @@ internal sealed class GetMetricsQueryHandler(
     IAuditRepository audit)
     : IQueryHandler<GetMetricsQuery, MetricsResponse>
 {
-    // Sparks are pre-baked, demo-grade traces. They mirror what the design-system
-    // shows on the Command Center and Dashboard. Real production code would compute
-    // them from a time-series store; for the hackathon we want the visual punch
-    // without standing up Prometheus.
-    private static readonly SparkSeries Sparks = new(
-        Uptime:   [99.92,99.91,99.92,99.93,99.92,99.90,99.91,99.92,99.90,99.88,99.87,99.85,99.85,99.84,99.85],
-        Latency:  [34,35,33,34,36,35,38,40,42,44,46,42,41,42,42],
-        Incident: [7,8,8,9,10,10,11,11,12,12,13,14,14,14,14],
-        Towers:   [1289,1289,1290,1290,1291,1291,1290,1289,1289,1287,1286,1285,1285,1284,1284],
-        Subs:     [10,12,14,18,22,28,30,34,40,44,48,50,52,52,52],
-        Queries:  [800,900,1000,1100,1300,1500,1700,1900,2100,2300,2500,2700,2800,2820,2841]);
+    // Latency derivation constants. The fleet has no real-time latency probe, so we
+    // synthesise a p95 latency from the per-tower load + signal already captured on
+    // every TowerSnapshot. This is honest: the calibration mirrors how an NMS would
+    // forecast latency from utilisation — heavier load + weaker signal → higher
+    // queueing delay. A fully healthy fleet (load≈0, signal≈100) lands ~22 ms; a
+    // fully saturated fleet (load≈100, signal≈0) lands ~112 ms.
+    private const double LatencyBaselineMs = 22.0;
+    private const double LatencyLoadCoeff = 0.4;       // ms per 1pp of avg load
+    private const double LatencySignalCoeff = 0.5;     // ms per 1pp below 100% signal
+    private const double LatencyHealthyReferenceMs = 35.0;
 
     public async Task<Result<MetricsResponse>> Handle(GetMetricsQuery request, CancellationToken cancellationToken)
     {
+        DateTime now = DateTime.UtcNow;
+
         IReadOnlyList<TowerSnapshot> towers = await network.ListTowersAsync(cancellationToken);
         IReadOnlyList<RegionHealth> regionHealth = await network.GetRegionHealthAsync(cancellationToken);
         IReadOnlyList<AlertSnapshot> active = await alertsApi.ListActiveAsync(cancellationToken);
+        IReadOnlyList<AlertSnapshot> allAlerts = await alertsApi.ListAllAsync(cancellationToken);
+
+        // Hour windows for delta computation. We compare what happened in the last
+        // 60 minutes against what happened in the prior 60 minutes — this gives a
+        // meaningful "is this getting better or worse?" signal without needing a
+        // dedicated time-series store.
+        DateTime hourAgo = now.AddHours(-1);
+        DateTime twoHoursAgo = now.AddHours(-2);
+
+        IReadOnlyList<AlertSnapshot> raisedLastHour = allAlerts
+            .Where(a => a.RaisedAtUtc >= hourAgo && a.RaisedAtUtc < now)
+            .ToList();
+        IReadOnlyList<AlertSnapshot> raisedPriorHour = allAlerts
+            .Where(a => a.RaisedAtUtc >= twoHoursAgo && a.RaisedAtUtc < hourAgo)
+            .ToList();
 
         int crit = active.Count(a => a.Severity == "critical");
         int warn = active.Count(a => a.Severity == "warn");
         int info = active.Count(a => a.Severity == "info");
         int affectedSubs = active.Sum(a => a.SubscribersAffected);
-        int totalTowers = towers.Count > 0 ? towers.Count + 1276 : 1291; // pad to fleet size for demo
-        int onlineTowers = totalTowers - towers.Count(t => t.Status == "critical");
+
+        // Real fleet counts — no padding. If the seed evolves, the dashboard tracks it.
+        int totalTowers = towers.Count;
+        int criticalTowers = towers.Count(t => t.Status == "critical");
+        int warnTowers = towers.Count(t => t.Status == "warn");
+        int onlineTowers = totalTowers - criticalTowers;
+
+        // Network uptime: percentage of fleet not in critical state, with a half-weight
+        // penalty for warn-state towers (warn = degraded but reachable). A 1000-tower
+        // fleet with 1 critical and 4 warn → uptime = (1000 - 1 - 2) / 1000 = 99.7%.
+        double uptimePct = totalTowers == 0
+            ? 100.0
+            : Math.Round((1.0 - (criticalTowers + 0.5 * warnTowers) / totalTowers) * 100.0, 3);
+
+        // Avg latency: derived from real per-tower load + signal across the fleet.
+        double avgLoad = towers.Count == 0 ? 0 : towers.Average(t => (double)t.LoadPct);
+        double avgSignal = towers.Count == 0 ? 100 : towers.Average(t => (double)t.SignalPct);
+        double avgLatency = Math.Round(
+            LatencyBaselineMs + avgLoad * LatencyLoadCoeff + (100.0 - avgSignal) * LatencySignalCoeff,
+            1);
+
+        // Copilot query history — pull a single 48h window so we can compute today vs
+        // yesterday and the 16-hour sparkline from one trip to the audit log.
+        DateTime fortyEightHoursAgo = now.AddHours(-48);
+        IReadOnlyList<AuditEntry> recentQueriesAll = await audit.ListByActionSinceAsync(
+            "copilot.query", fortyEightHoursAgo, 5000, cancellationToken);
+        DateTime twentyFourHoursAgo = now.AddHours(-24);
+        int queriesLast24h = recentQueriesAll.Count(e => e.OccurredAtUtc >= twentyFourHoursAgo);
+        int queriesPrior24h = recentQueriesAll.Count(e => e.OccurredAtUtc < twentyFourHoursAgo);
+
+        // ── Deltas (last hour vs prior hour, except copilot which is 24h vs 24h) ──
+        // Each delta is honest: it expresses an observed change between two equal
+        // windows on the live data. The trend field is the *evaluation* of that
+        // change — "up"=good (green), "down"=bad (red) — keyed off whether the
+        // metric improves or degrades when its value rises.
+        int incidentsRaisedDelta = raisedLastHour.Count - raisedPriorHour.Count;
+        int subsDelta = raisedLastHour.Sum(a => a.SubscribersAffected)
+                        - raisedPriorHour.Sum(a => a.SubscribersAffected);
+        int newCriticalsLastHour = raisedLastHour.Count(a => a.Severity == "critical");
+        int newCriticalsPriorHour = raisedPriorHour.Count(a => a.Severity == "critical");
+        int towersDelta = -(newCriticalsLastHour - newCriticalsPriorHour);
+
+        // Uptime delta: how much uptime would have been added/lost from the change in
+        // critical alerts in the last hour vs the prior hour. Each new critical = ~1
+        // tower's worth of impact, normalised to fleet size.
+        double uptimeDelta = totalTowers == 0
+            ? 0
+            : Math.Round(-(newCriticalsLastHour - newCriticalsPriorHour) * 100.0 / totalTowers, 2);
+
+        // Latency delta: how far current latency sits above (or below) the
+        // healthy-fleet reference of ~35ms. A direct, derivable value — no random.
+        double latencyDelta = Math.Round(avgLatency - LatencyHealthyReferenceMs, 1);
+
+        int queriesDelta = queriesLast24h - queriesPrior24h;
 
         var kpis = new List<KpiCard>
         {
-            new("Network Uptime",        "99.847", "%",       "-0.03",                                "down", "24h rolling"),
-            new("Avg Latency",           "42",     "ms",      "+8",                                   "down", "p95 across LAG metro"),
-            new("Active Incidents",      active.Count.ToString(CultureInfo.InvariantCulture), "",  $"+{crit}", "down", $"{crit} critical, {warn} warn, {info} info"),
-            new("Towers Online",         $"{onlineTowers:N0}", $"/ {totalTowers:N0}", "-3",          "down", "Lagos metro"),
-            new("Subscribers Affected",  $"{affectedSubs / 1000.0:F1}", "K", "+14.2K",               "down", "last 60 min"),
-            new("Copilot Queries",       "2,841",  "",        "+412",                                 "up",   "today"),
+            new(
+                Label: "Network Uptime",
+                Value: uptimePct.ToString("F3", CultureInfo.InvariantCulture),
+                Unit: "%",
+                Delta: SignedDecimal(uptimeDelta, 2),
+                Trend: TrendForUp(uptimeDelta),
+                Sub: $"{criticalTowers} critical, {warnTowers} warn · {totalTowers} towers"),
+            new(
+                Label: "Avg Latency",
+                Value: avgLatency.ToString("F1", CultureInfo.InvariantCulture),
+                Unit: "ms",
+                Delta: SignedDecimal(latencyDelta, 1),
+                Trend: TrendForDown(latencyDelta),
+                Sub: $"avg load {avgLoad:F0}% · signal {avgSignal:F0}%"),
+            new(
+                Label: "Active Incidents",
+                Value: active.Count.ToString(CultureInfo.InvariantCulture),
+                Unit: "",
+                Delta: SignedInt(incidentsRaisedDelta),
+                Trend: TrendForDown(incidentsRaisedDelta),
+                Sub: $"{crit} critical, {warn} warn, {info} info"),
+            new(
+                Label: "Towers Online",
+                Value: onlineTowers.ToString("N0", CultureInfo.InvariantCulture),
+                Unit: $"/ {totalTowers.ToString("N0", CultureInfo.InvariantCulture)}",
+                Delta: SignedInt(towersDelta),
+                Trend: TrendForUp(towersDelta),
+                Sub: "Lagos metro · live count"),
+            new(
+                Label: "Subscribers Affected",
+                Value: (affectedSubs / 1000.0).ToString("F1", CultureInfo.InvariantCulture),
+                Unit: "K",
+                Delta: SignedDecimal(subsDelta / 1000.0, 1) + "K",
+                Trend: TrendForDown(subsDelta),
+                Sub: "active alerts · last 60 min Δ"),
+            new(
+                Label: "Copilot Queries",
+                Value: queriesLast24h.ToString("N0", CultureInfo.InvariantCulture),
+                Unit: "",
+                Delta: SignedInt(queriesDelta),
+                Trend: TrendForUp(queriesDelta),
+                Sub: "last 24h · vs prior 24h"),
         };
 
         IReadOnlyList<RegionHealthMetric> regions = regionHealth
@@ -60,27 +164,35 @@ internal sealed class GetMetricsQueryHandler(
                 }))
             .ToList();
 
-        IReadOnlyList<IncidentTypeBreakdown> types =
-        [
-            new("Fiber cut",     active.Count(a => a.Cause.Contains("fiber", StringComparison.OrdinalIgnoreCase)) + 8),
-            new("Power outage",  active.Count(a => a.Cause.Contains("power", StringComparison.OrdinalIgnoreCase) || a.Cause.Contains("grid", StringComparison.OrdinalIgnoreCase)) + 12),
-            new("Congestion",    active.Count(a => a.Cause.Contains("congest", StringComparison.OrdinalIgnoreCase) || a.Cause.Contains("load", StringComparison.OrdinalIgnoreCase)) + 24),
-            new("Equipment",     6),
-            new("Weather",       active.Count(a => a.Cause.Contains("weather", StringComparison.OrdinalIgnoreCase)) + 3),
-        ];
+        // Incident type breakdown — derived purely from the live alerts feed. No
+        // hardcoded baseline counts: each row is what's actually open right now.
+        IReadOnlyList<IncidentTypeBreakdown> types = BuildIncidentTypes(active);
 
         // Per-region 16-point latency series for the BigChart on the Insights page.
-        // No time-series store yet — derive a smooth 16h trace ending at the region's
-        // current load, so the curve always ends at "now" matching the ring health.
-        // The endpoint stays cheap (no extra query) and the values reflect live state.
+        // Still derivative — see BuildRegionLatency for the calibration — but the
+        // input (region health) is live.
         IReadOnlyList<RegionLatencySeries> regionLatency = BuildRegionLatency(regionHealth);
 
-        // Top copilot queries — group recent audit entries (Action == "copilot.query")
-        // by Target text. Pulled from the actual audit log so this card "ticks" as users
-        // ask things, instead of reading from a hardcoded list.
-        IReadOnlyList<AuditEntry> recentQueries = await audit.ListByActionSinceAsync(
-            "copilot.query", DateTime.UtcNow.AddHours(-24), 500, cancellationToken);
-        IReadOnlyList<TopCopilotQuery> topQueries = recentQueries
+        // 16-hour sparklines, bucketed from the data we have. Alerts go into hourly
+        // bins by RaisedAtUtc; copilot queries by audit OccurredAtUtc. From those
+        // bins we derive an honest 16-point trace for each KPI.
+        SparkSeries sparks = BuildSparks(
+            now: now,
+            allAlerts: allAlerts,
+            queries: recentQueriesAll,
+            totalTowers: totalTowers,
+            currentUptime: uptimePct,
+            currentLatency: avgLatency,
+            currentIncidents: active.Count,
+            currentOnline: onlineTowers,
+            currentSubs: affectedSubs,
+            currentQueries: queriesLast24h);
+
+        // Top copilot queries — group by Target text. Pulled from the actual audit
+        // log so this card "ticks" as users ask things, instead of reading from a
+        // hardcoded list. Reuses the 48h pull and filters to last 24h.
+        IReadOnlyList<TopCopilotQuery> topQueries = recentQueriesAll
+            .Where(e => e.OccurredAtUtc >= twentyFourHoursAgo)
             .GroupBy(e => Truncate(e.Target, 60), StringComparer.OrdinalIgnoreCase)
             .Select(g => new TopCopilotQuery(g.Key, g.Count()))
             .OrderByDescending(q => q.Count)
@@ -88,7 +200,28 @@ internal sealed class GetMetricsQueryHandler(
             .Take(5)
             .ToList();
 
-        return Result.Success(new MetricsResponse(kpis, Sparks, regions, types, regionLatency, topQueries));
+        return Result.Success(new MetricsResponse(kpis, sparks, regions, types, regionLatency, topQueries));
+    }
+
+    private static IReadOnlyList<IncidentTypeBreakdown> BuildIncidentTypes(IReadOnlyList<AlertSnapshot> active)
+    {
+        int fiber = active.Count(a => a.Cause.Contains("fiber", StringComparison.OrdinalIgnoreCase));
+        int power = active.Count(a => a.Cause.Contains("power", StringComparison.OrdinalIgnoreCase)
+                                   || a.Cause.Contains("grid", StringComparison.OrdinalIgnoreCase));
+        int congestion = active.Count(a => a.Cause.Contains("congest", StringComparison.OrdinalIgnoreCase)
+                                        || a.Cause.Contains("load", StringComparison.OrdinalIgnoreCase));
+        int weather = active.Count(a => a.Cause.Contains("weather", StringComparison.OrdinalIgnoreCase));
+        // "Equipment" is the leftover bucket — anything that didn't match a known cause.
+        int classified = fiber + power + congestion + weather;
+        int equipment = Math.Max(0, active.Count - classified);
+        return
+        [
+            new("Fiber cut", fiber),
+            new("Power outage", power),
+            new("Congestion", congestion),
+            new("Equipment", equipment),
+            new("Weather", weather),
+        ];
     }
 
     private static IReadOnlyList<RegionLatencySeries> BuildRegionLatency(IReadOnlyList<RegionHealth> regions)
@@ -122,6 +255,160 @@ internal sealed class GetMetricsQueryHandler(
         }
         return series;
     }
+
+    /// <summary>
+    /// Build all six KPI sparklines from the alert + audit history. We bucket alerts
+    /// by RaisedAtUtc into 16 hourly bins ending at "now"; copilot queries by their
+    /// OccurredAtUtc. From those bins each spark is derived:
+    ///   • Incident:  alerts raised in that bin
+    ///   • Subs:      subscribers affected by alerts raised in that bin (in K)
+    ///   • Queries:   audit entries with action=copilot.query in that bin
+    ///   • Uptime/Towers: derived from the running count of critical alerts raised,
+    ///                    normalised to the current fleet size
+    ///   • Latency:   tracks incident pressure with a small ramp toward the live
+    ///                computed value, anchored so the last point matches the KPI
+    /// The last point of each series is forced to the live KPI value, so the spark
+    /// always agrees with the headline number it sits beneath.
+    /// </summary>
+    private static SparkSeries BuildSparks(
+        DateTime now,
+        IReadOnlyList<AlertSnapshot> allAlerts,
+        IReadOnlyList<AuditEntry> queries,
+        int totalTowers,
+        double currentUptime,
+        double currentLatency,
+        int currentIncidents,
+        int currentOnline,
+        int currentSubs,
+        int currentQueries)
+    {
+        const int Bins = 16;
+
+        var binEdges = new DateTime[Bins + 1];
+        for (int i = 0; i <= Bins; i++)
+        {
+            binEdges[i] = now.AddHours(-(Bins - i));
+        }
+
+        int[] alertsPerBin = new int[Bins];
+        int[] criticalsPerBin = new int[Bins];
+        int[] subsPerBin = new int[Bins];
+        foreach (AlertSnapshot a in allAlerts)
+        {
+            if (a.RaisedAtUtc < binEdges[0] || a.RaisedAtUtc >= binEdges[Bins]) continue;
+            int bin = BinFor(a.RaisedAtUtc, binEdges);
+            if (bin < 0) continue;
+            alertsPerBin[bin]++;
+            subsPerBin[bin] += a.SubscribersAffected;
+            if (a.Severity == "critical") criticalsPerBin[bin]++;
+        }
+
+        int[] queriesPerBin = new int[Bins];
+        foreach (AuditEntry e in queries)
+        {
+            if (e.OccurredAtUtc < binEdges[0] || e.OccurredAtUtc >= binEdges[Bins]) continue;
+            int bin = BinFor(e.OccurredAtUtc, binEdges);
+            if (bin < 0) continue;
+            queriesPerBin[bin]++;
+        }
+
+        // ── Build each spark ──
+        // Incident: count per bin, last bin pinned to the live active count so the
+        // spark and the KPI number agree.
+        double[] incidentSpark = alertsPerBin.Select(x => (double)x).ToArray();
+        incidentSpark[Bins - 1] = currentIncidents;
+
+        // Subs: K-units per bin, last point pinned to the live affected-subs total.
+        double[] subsSpark = subsPerBin.Select(x => Math.Round(x / 1000.0, 2)).ToArray();
+        subsSpark[Bins - 1] = Math.Round(currentSubs / 1000.0, 2);
+
+        // Queries: cumulative running count over the 16h window — better visual than
+        // the per-bin rate for a "queries today" tile. Last point pinned to the live
+        // 24h count so the spark agrees with the KPI value.
+        double[] queriesSpark = new double[Bins];
+        int run = 0;
+        for (int i = 0; i < Bins; i++)
+        {
+            run += queriesPerBin[i];
+            queriesSpark[i] = run;
+        }
+        queriesSpark[Bins - 1] = currentQueries;
+
+        // Towers Online: derived from cumulative new criticals — start at the current
+        // online + (total criticals raised in window) and step down as each bin's
+        // criticals are subtracted, ending at the live online count.
+        int totalCritsInWindow = criticalsPerBin.Sum();
+        double[] towersSpark = new double[Bins];
+        int runCrits = 0;
+        int startOnline = currentOnline + totalCritsInWindow;
+        for (int i = 0; i < Bins; i++)
+        {
+            runCrits += criticalsPerBin[i];
+            towersSpark[i] = startOnline - runCrits;
+        }
+        towersSpark[Bins - 1] = currentOnline;
+
+        // Uptime: same shape as towers, normalised to a percentage of the fleet.
+        double[] uptimeSpark = new double[Bins];
+        if (totalTowers <= 0)
+        {
+            for (int i = 0; i < Bins; i++) uptimeSpark[i] = currentUptime;
+        }
+        else
+        {
+            for (int i = 0; i < Bins; i++)
+            {
+                double onlineAtBin = towersSpark[i];
+                uptimeSpark[i] = Math.Round(100.0 * onlineAtBin / Math.Max(1, currentOnline + totalCritsInWindow), 3);
+            }
+            uptimeSpark[Bins - 1] = currentUptime;
+        }
+
+        // Latency: tracks incident pressure (more alerts in a bin → higher latency)
+        // with a smooth ramp anchored to the current value at the last bin.
+        double maxAlertsBin = Math.Max(1, alertsPerBin.Max());
+        double[] latencySpark = new double[Bins];
+        for (int i = 0; i < Bins; i++)
+        {
+            double pressure = alertsPerBin[i] / maxAlertsBin;     // 0..1
+            double ramp = LatencyHealthyReferenceMs + pressure * (currentLatency - LatencyHealthyReferenceMs);
+            latencySpark[i] = Math.Round(ramp, 1);
+        }
+        latencySpark[Bins - 1] = currentLatency;
+
+        return new SparkSeries(
+            Uptime: uptimeSpark,
+            Latency: latencySpark,
+            Incident: incidentSpark,
+            Towers: towersSpark,
+            Subs: subsSpark,
+            Queries: queriesSpark);
+    }
+
+    private static int BinFor(DateTime at, DateTime[] edges)
+    {
+        // Linear scan — only 16 bins, so this is faster than building a sorted index.
+        for (int i = 0; i < edges.Length - 1; i++)
+        {
+            if (at >= edges[i] && at < edges[i + 1]) return i;
+        }
+        return -1;
+    }
+
+    private static string SignedInt(int value) =>
+        (value >= 0 ? "+" : "") + value.ToString(CultureInfo.InvariantCulture);
+
+    private static string SignedDecimal(double value, int decimals)
+    {
+        string formatted = value.ToString("F" + decimals, CultureInfo.InvariantCulture);
+        return value >= 0 ? "+" + formatted : formatted;
+    }
+
+    /// <summary>Trend evaluation when "rising value" is GOOD (uptime, towers online, queries).</summary>
+    private static string TrendForUp(double delta) => delta >= 0 ? "up" : "down";
+
+    /// <summary>Trend evaluation when "rising value" is BAD (latency, incidents, subs affected).</summary>
+    private static string TrendForDown(double delta) => delta <= 0 ? "up" : "down";
 
     private static string Truncate(string value, int max) =>
         string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max].TrimEnd() + "…";

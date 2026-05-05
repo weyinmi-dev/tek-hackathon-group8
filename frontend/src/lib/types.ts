@@ -321,3 +321,44 @@ export type EnergyRecommendation = {
   tone: "accent" | "warn" | "info";
   estimatedDailySavingsNgn: number;
 };
+
+// ── Energy analytics ──────────────────────────────────────────────────────────
+// Mirrors EnergyMetricsResponse from /api/energy/metrics. Powers the energy panel
+// on the Operations Dashboard (regional health, mix, anomaly type breakdown,
+// OPEX trend, top diesel burners).
+
+export type EnergyRegionHealthDto = {
+  name: string;
+  sites: number;
+  critical: number;
+  degraded: number;
+  ok: number;
+  avgUptimePct: number;
+  avgBattPct: number;
+  tone: "ok" | "warn" | "crit";
+};
+
+export type EnergyMixSliceDto = { source: string; pct: number };
+
+export type EnergyAnomalyTypeBreakdownDto = { kind: string; count: number };
+
+export type TopDieselBurnerDto = {
+  siteCode: string;
+  name: string;
+  region: string;
+  dailyDieselLitres: number;
+  dailyCostNgn: number;
+};
+
+export type EnergyMetricsResponse = {
+  regions: EnergyRegionHealthDto[];
+  energyMix: EnergyMixSliceDto[];
+  anomalyTypes: EnergyAnomalyTypeBreakdownDto[];
+  opexTrend: number[];
+  topBurners: TopDieselBurnerDto[];
+  openAnomalies: number;
+  criticalSites: number;
+  fleetUptimePct: number;
+  avgBatteryPct: number;
+  dailyOpexNgn: number;
+};
