@@ -1,5 +1,4 @@
 
-namespace Web.Api.Endpoints;
 
 public static class IoTEndpoints
 {
@@ -34,4 +33,36 @@ public class TowerData
     public double BatteryLevel { get; set; }
     public string Location { get; set; }
 }
+
+// AI Engine
+public static class AIEngine
+{
+    public static object Process(TowerData tower)
+    {
+        if (tower.BatteryLevel < 25)
+        {
+            return new
+            {
+                Alert = "Low Power Risk",
+                Action = "Switch to backup power"
+            };
+        }
+
+        if (tower.Temperature > 80)
+        {
+            return new
+            {
+                Alert = "Overheating Risk",
+                Action = "Activate cooling system"
+            };
+        }
+
+        return new
+        {
+            Status = "Normal",
+            Action = "No action required"
+        };
+    }
+}
+
 
