@@ -73,13 +73,18 @@ public static class MigrationExtensions
             // others may be brand new. Replay the create script per-statement.
         }
 
-        await CreateMissingObjectsAsync(ctx);
+        // Statements that reference a column not yet present on a pre-existing table
+        // (e.g. a CREATE INDEX on a property added after the first deploy) get deferred
+        // here and retried below — AddMissingColumnsAsync needs to run before they can
+        // succeed.
+        List<string> deferred = await CreateMissingObjectsAsync(ctx);
         // After (re)creating tables, also reconcile per-table columns. CreateTablesAsync
         // never adds columns to a pre-existing table, so any property added to an entity
         // after the first deploy stays missing in the live schema until we ALTER it in.
         // This keeps the EnsureCreated flow viable as the model evolves without us having
         // to introduce EF migrations.
         await AddMissingColumnsAsync(ctx);
+        await RetryDeferredStatementsAsync(ctx, deferred);
     }
 
     /// <summary>
@@ -175,9 +180,10 @@ public static class MigrationExtensions
         return columns;
     }
 
-    private static async Task CreateMissingObjectsAsync(DbContext ctx)
+    private static async Task<List<string>> CreateMissingObjectsAsync(DbContext ctx)
     {
         string script = ctx.Database.GenerateCreateScript();
+        var deferred = new List<string>();
         foreach (string statement in SplitPostgresStatements(script))
         {
             string trimmed = statement.Trim();
@@ -194,6 +200,28 @@ public static class MigrationExtensions
             {
                 // 42P07 duplicate_table, 42P06 duplicate_schema, 42710 duplicate_object
                 // (covers indexes, constraints). Idempotent re-run.
+            }
+            catch (PostgresException ex) when (ex.SqlState == "42703")
+            {
+                // undefined_column — typically a CREATE INDEX on a column that was added
+                // to the model after the table was first deployed. Defer so we can retry
+                // after AddMissingColumnsAsync ALTERs it in.
+                deferred.Add(trimmed);
+            }
+        }
+        return deferred;
+    }
+
+    private static async Task RetryDeferredStatementsAsync(DbContext ctx, List<string> deferred)
+    {
+        foreach (string sql in deferred)
+        {
+            try
+            {
+                await ctx.Database.ExecuteSqlRawAsync(sql);
+            }
+            catch (PostgresException ex) when (IsDuplicateObject(ex.SqlState))
+            {
             }
         }
     }
