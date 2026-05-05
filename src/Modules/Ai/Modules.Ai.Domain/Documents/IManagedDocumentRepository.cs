@@ -6,6 +6,7 @@ public interface IManagedDocumentRepository
     Task AddAsync(ManagedDocument document, CancellationToken cancellationToken = default);
     void Remove(ManagedDocument document);
     Task<IReadOnlyList<ManagedDocument>> ListAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<ManagedDocument>> ListPagedAsync(int page, int pageSize, string? searchTerm = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<ManagedDocument>> ListByStatusAsync(IndexingStatus status, CancellationToken cancellationToken = default);
-    Task<int> CountAsync(CancellationToken cancellationToken = default);
+    Task<int> CountAsync(string? searchTerm = null, CancellationToken cancellationToken = default);
 }

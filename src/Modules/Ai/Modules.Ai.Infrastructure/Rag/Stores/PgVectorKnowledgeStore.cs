@@ -36,7 +36,8 @@ internal sealed class PgVectorKnowledgeStore(AiDbContext db) : IKnowledgeStore
         }
         if (!string.IsNullOrWhiteSpace(regionFilter))
         {
-            docs = docs.Where(d => d.Region == regionFilter);
+            string upper = regionFilter.Trim().ToUpperInvariant();
+            docs = docs.Where(d => d.Region.ToUpper() == upper);
         }
 
         var rows = await chunks
