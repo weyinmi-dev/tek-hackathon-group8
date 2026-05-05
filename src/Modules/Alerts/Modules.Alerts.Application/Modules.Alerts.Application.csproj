@@ -4,4 +4,7 @@
     <ProjectReference Include="..\..\Analytics\Modules.Analytics.Api\Modules.Analytics.Api.csproj" />
     <ProjectReference Include="..\Modules.Alerts.Domain\Modules.Alerts.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Modules.Network.UnitTests" />
+  </ItemGroup>
 </Project>

@@ -57,10 +57,11 @@ internal static class DecisionFixtures
 
     public static TowerSnapshot Tower(
         string code = "LOS-T-014",
+        string region = "Lagos West",
         string status = "ok",
         int signalPct = 90,
         int loadPct = 50) =>
-        new(code, status, signalPct, loadPct);
+        new(code, region, status, signalPct, loadPct);
 
     public static IReadOnlyDictionary<string, TowerSnapshot> Towers(params TowerSnapshot[] snapshots) =>
         snapshots.ToDictionary(t => t.Code, StringComparer.OrdinalIgnoreCase);

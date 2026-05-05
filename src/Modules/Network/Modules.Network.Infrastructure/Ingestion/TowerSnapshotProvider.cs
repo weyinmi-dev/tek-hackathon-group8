@@ -19,6 +19,7 @@ internal sealed class TowerSnapshotProvider(NetworkDbContext db) : ITowerSnapsho
         {
             snapshot[tower.Code] = new TowerSnapshot(
                 tower.Code,
+                tower.Region,
                 tower.Status.ToWire(),
                 tower.SignalPct,
                 tower.LoadPct);

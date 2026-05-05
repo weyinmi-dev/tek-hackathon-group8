@@ -4,5 +4,10 @@
     <ProjectReference Include="..\..\..\Infrastructure\Infrastructure.csproj" />
     <ProjectReference Include="..\Modules.Alerts.Api\Modules.Alerts.Api.csproj" />
     <ProjectReference Include="..\Modules.Alerts.Application\Modules.Alerts.Application.csproj" />
+    <!-- Stage-4 + decision-engine cross-module ports defined by Network.Application. -->
+    <ProjectReference Include="..\..\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Modules.Network.UnitTests" />
   </ItemGroup>
 </Project>

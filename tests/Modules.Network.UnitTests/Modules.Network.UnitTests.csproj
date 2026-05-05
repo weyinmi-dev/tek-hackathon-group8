@@ -35,6 +35,10 @@
          Reference here so the same test project can exercise both Network and Ai pipeline pieces.
          If Ai-specific tests grow large, split them into tests/Modules.Ai.UnitTests/. -->
     <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Infrastructure\Modules.Ai.Infrastructure.csproj" />
+    <!-- Stage-4 dedup lives in Alerts.Domain + Alerts.Application + Alerts.Infrastructure. -->
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Domain\Modules.Alerts.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Application\Modules.Alerts.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Infrastructure\Modules.Alerts.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

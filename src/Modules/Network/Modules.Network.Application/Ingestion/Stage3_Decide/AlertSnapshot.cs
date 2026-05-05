@@ -17,6 +17,7 @@ public sealed record AlertSnapshot(
 
 public sealed record TowerSnapshot(
     string Code,
+    string Region,
     string Status,
     int SignalPct,
     int LoadPct);

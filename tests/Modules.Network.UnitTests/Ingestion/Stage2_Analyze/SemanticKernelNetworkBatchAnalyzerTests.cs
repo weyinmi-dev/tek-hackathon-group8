@@ -131,7 +131,7 @@ public sealed class SemanticKernelNetworkBatchAnalyzerTests
     {
         // Anomaly with confidence > 1 — slips past per-call validation (the per-call skill stub
         // doesn't validate), but the combined-result validator catches it.
-        var bad = ValidAnomaly() with { Confidence = 1.5m };
+        DetectedAnomaly bad = ValidAnomaly() with { Confidence = 1.5m };
 
         var anomalySkill = new StubAnomalySkill(_ => Result.Success<IReadOnlyList<DetectedAnomaly>>([bad]));
         var optimizationSkill = new StubOptimizationSkill(_ => Result.Success<IReadOnlyList<ProposedOptimization>>([]));
