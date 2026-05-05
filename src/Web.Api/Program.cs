@@ -1,4 +1,3 @@
-using System.Reflection;
 using System.Text;
 using System.Text.Json.Serialization;
 using Application;
@@ -22,6 +21,7 @@ using Modules.Network.Application;
 using Modules.Network.Infrastructure;
 using Serilog;
 using ServiceDefaults;
+using Web.Api.Endpoints;
 using Web.Api.Extensions;
 using Web.Api.Infrastructure;
 using Web.Api.OpenApi;
@@ -115,6 +115,8 @@ WebApplication app = builder.Build();
 RouteGroupBuilder apiGroup = app.MapGroup("api");
 
 app.MapEndpoints(apiGroup);
+apiGroup.MapIoTEndpoints();
+app.MapSocialEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
