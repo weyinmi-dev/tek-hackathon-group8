@@ -37,8 +37,14 @@ using Modules.Ai.Infrastructure.Rag.Storage;
 using Modules.Ai.Infrastructure.Rag.Storage.Providers;
 using Modules.Ai.Infrastructure.Rag.Stores;
 using Modules.Ai.Infrastructure.Repositories;
+using Modules.Ai.Infrastructure.Pipeline;
+using Modules.Ai.Infrastructure.Pipeline.Skills;
+using Modules.Ai.Infrastructure.Pipeline.Validators;
 using Modules.Ai.Infrastructure.SemanticKernel;
 using Modules.Ai.Infrastructure.SemanticKernel.Skills;
+using FluentValidation;
+using Modules.Network.Application.Ingestion.Stage2_Analyze;
+using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 using SharedKernel;
 
 namespace Modules.Ai.Infrastructure;
@@ -138,10 +144,23 @@ public static class DependencyInjection
             });
             services.AddScoped(sp => sp.GetRequiredService<Kernel>().GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
             services.AddScoped<ICopilotOrchestrator, SemanticKernelOrchestrator>();
+
+            // Stage 2 — three SK skills + the wrapper that composes/validates/retries them.
+            // Skills are NOT added to Kernel.Plugins because the analyzer invokes them
+            // deterministically rather than letting the chat model auto-select them.
+            services.AddScoped<INetworkAnomalySkill, SemanticKernelNetworkAnomalySkill>();
+            services.AddScoped<INetworkOptimizationSkill, SemanticKernelNetworkOptimizationSkill>();
+            services.AddScoped<INetworkTopologyMappingSkill, SemanticKernelNetworkTopologyMappingSkill>();
+            services.AddSingleton<IValidator<AiAnalysisResult>, AiAnalysisResultValidator>();
+            services.AddScoped<INetworkBatchAnalyzer, SemanticKernelNetworkBatchAnalyzer>();
         }
         else
         {
             services.AddScoped<ICopilotOrchestrator, MockCopilotOrchestrator>();
+
+            // Heuristic Stage-2 fallback: lets the pipeline run end-to-end without an Azure
+            // OpenAI key. Required by the demo + by deterministic integration tests.
+            services.AddSingleton<INetworkBatchAnalyzer, HeuristicNetworkBatchAnalyzer>();
         }
 
         return services;
