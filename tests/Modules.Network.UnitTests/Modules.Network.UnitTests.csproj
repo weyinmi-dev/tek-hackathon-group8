@@ -21,6 +21,10 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" Version="6.12.2" />
+    <!-- End-to-end pipeline test wires all the real handlers against in-memory DbContexts
+         so it can run anywhere (no Docker, no Postgres). The InMemory provider ignores
+         column-type hints (jsonb), so the existing EF configurations work as-is. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="10.0.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -39,6 +43,12 @@
     <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Domain\Modules.Alerts.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Application\Modules.Alerts.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Infrastructure\Modules.Alerts.Infrastructure.csproj" />
+    <!-- Stage 5 (dashboard projection) lives in Analytics. -->
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Domain\Modules.Analytics.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Application\Modules.Analytics.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Infrastructure\Modules.Analytics.Infrastructure.csproj" />
+    <!-- Application has the MediatR pipeline behaviors. -->
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
   </ItemGroup>
 
 </Project>

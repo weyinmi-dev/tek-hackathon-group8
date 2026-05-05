@@ -9,6 +9,7 @@ using Modules.Network.Domain.Towers;
 using SharedKernel;
 using Xunit;
 using static Modules.Network.UnitTests.Ingestion.Decisions.DecisionFixtures;
+using DomainTower = Modules.Network.Domain.Towers.Tower;
 
 namespace Modules.Network.UnitTests.Ingestion.Stage4_Persist;
 
@@ -148,7 +149,7 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         IngestionRun run = NewRun();
         WalkToPersisting(run);
 
-        Tower tower = Tower.Create(
+        DomainTower tower = DomainTower.Create(
             "LOS-T-014", "T-014", "Lagos West",
             6.5, 3.5, 0, 0,
             signalPct: 80, loadPct: 50, status: TowerStatus.Ok, issue: null);
@@ -201,7 +202,7 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         WalkToPersisting(run);
 
         DetectedAnomaly anomaly = Anomaly(tower: "LOS-T-014");
-        Tower tower = Tower.Create(
+        DomainTower tower = DomainTower.Create(
             "LOS-T-014", "T-014", "Lagos West",
             6.5, 3.5, 0, 0, 80, 50, TowerStatus.Ok, null);
 
@@ -276,15 +277,15 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
             Task.FromResult(towers);
     }
 
-    private sealed class FakeTowerRepository(Tower? tower = null) : ITowerRepository
+    private sealed class FakeTowerRepository(DomainTower? tower = null) : ITowerRepository
     {
-        public Task<IReadOnlyList<Tower>> ListAsync(CancellationToken _ = default) =>
-            Task.FromResult<IReadOnlyList<Tower>>(tower is null ? [] : [tower]);
-        public Task<Tower?> GetByCodeAsync(string code, CancellationToken _ = default) =>
+        public Task<IReadOnlyList<DomainTower>> ListAsync(CancellationToken _ = default) =>
+            Task.FromResult<IReadOnlyList<DomainTower>>(tower is null ? [] : [tower]);
+        public Task<DomainTower?> GetByCodeAsync(string code, CancellationToken _ = default) =>
             Task.FromResult(tower is not null && tower.Code == code ? tower : null);
-        public Task<IReadOnlyList<Tower>> ListByRegionAsync(string _, CancellationToken __ = default) =>
-            Task.FromResult<IReadOnlyList<Tower>>([]);
-        public Task AddRangeAsync(IEnumerable<Tower> _, CancellationToken __ = default) => Task.CompletedTask;
+        public Task<IReadOnlyList<DomainTower>> ListByRegionAsync(string _, CancellationToken __ = default) =>
+            Task.FromResult<IReadOnlyList<DomainTower>>([]);
+        public Task AddRangeAsync(IEnumerable<DomainTower> _, CancellationToken __ = default) => Task.CompletedTask;
         public Task<int> CountAsync(CancellationToken _ = default) => Task.FromResult(tower is null ? 0 : 1);
     }
 

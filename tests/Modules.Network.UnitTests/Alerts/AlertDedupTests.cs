@@ -153,23 +153,20 @@ public sealed class AlertDedupTests
     }
 
     [Fact]
-    public void RegisterRecurrence_FailsAfterResolved()
+    public void RegisterRecurrence_AcceptsRecurrenceOnAcknowledgedAlert()
     {
+        // Operators acking an alert means they're engaged with the incident; if the same
+        // anomaly keeps firing the recurrence count must keep climbing so dashboards reflect
+        // the ongoing severity. Status itself is intentionally untouched by the recurrence.
         Alert alert = NewFingerprintedAlert();
         var ack = alert.Acknowledge("noc-operator");
         ack.IsSuccess.Should().BeTrue();
 
-        // Force-resolve by acknowledging then transitioning manually isn't supported here;
-        // emulate: AlertStatus.Resolved through the public API isn't possible without a
-        // Resolve method, so test the guard via reflection of the alert state by acking
-        // first and confirming acknowledged is treated separately.
-        // Skip the resolved branch — covered by domain-level invariant (RegisterRecurrence
-        // returns Resolved error only when Status == Resolved). Acknowledged should still
-        // accept recurrences (operators have engaged but the incident is ongoing).
-
         var recurrence = alert.RegisterRecurrence(AlertSeverity.Warn, 0.7, null, InitialTs.AddMinutes(5));
+
         recurrence.IsSuccess.Should().BeTrue();
         alert.OccurrenceCount.Should().Be(2);
+        alert.Status.Should().Be(AlertStatus.Acknowledged);
     }
 
     [Fact]
