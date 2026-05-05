@@ -1,4 +1,5 @@
 using Application.Abstractions.Messaging;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
@@ -6,6 +7,7 @@ using Modules.Network.Domain;
 using Modules.Network.Domain.Ingestion;
 using Modules.Network.Domain.Towers;
 using SharedKernel;
+using DomainOptimizationType = Modules.Network.Domain.Optimizations.OptimizationType;
 
 namespace Modules.Network.Application.Ingestion.Stage4_Persist;
 
@@ -14,6 +16,7 @@ internal sealed class ApplyPipelineActionsCommandHandler(
     ITowerSnapshotProvider towerSnapshots,
     ITowerRepository towers,
     IAlertActionExecutor alertExecutor,
+    ISender sender,
     IUnitOfWork unitOfWork,
     ILogger<ApplyPipelineActionsCommandHandler> logger)
     : ICommandHandler<ApplyPipelineActionsCommand, PipelineActionCounts>
@@ -77,13 +80,31 @@ internal sealed class ApplyPipelineActionsCommandHandler(
             towerUpdates++;
         }
 
-        // ── Optimizations: counted, persistence deferred (not in success criteria) ──
-        int optimizationsCreated = request.Actions.OfType<CreateOptimizationAction>().Count();
-        if (optimizationsCreated > 0)
+        // ── Optimizations: dispatch CreateOptimizationCommand per action ────
+        // Each dispatch goes through the standard MediatR pipeline (logging + validation
+        // behaviors) and stages the entity in the same NetworkDbContext; the SaveChanges
+        // below commits all of them with the tower updates in one transaction.
+        int optimizationsCreated = 0;
+        DateTimeOffset proposedAt = DateTimeOffset.UtcNow;
+        foreach (CreateOptimizationAction action in request.Actions.OfType<CreateOptimizationAction>())
         {
-            logger.LogInformation(
-                "Run {IngestionRunId}: {OptimizationCount} optimizations produced (persistence deferred to follow-up PR)",
-                run.Id, optimizationsCreated);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var command = new CreateOptimizationCommand(
+                IngestionRunId: run.Id,
+                TowerCode: action.Source.TowerCode,
+                AnomalyFingerprint: action.AnomalyFingerprint,
+                Type: MapOptimizationType(action.Source.Type),
+                EstimatedImpact: action.Source.EstimatedImpact,
+                Rationale: action.Source.Rationale,
+                ProposedAt: proposedAt);
+
+            Result<Guid> dispatched = await sender.Send(command, cancellationToken);
+            if (dispatched.IsFailure)
+            {
+                return Result.Failure<PipelineActionCounts>(dispatched.Error);
+            }
+            optimizationsCreated++;
         }
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -166,5 +187,20 @@ internal sealed class ApplyPipelineActionsCommandHandler(
         "CRITICAL" => TowerStatus.Critical,
         "WARN" or "WARNING" or "DEGRADED" => TowerStatus.Warn,
         _ => TowerStatus.Ok
+    };
+
+    /// <summary>
+    /// Map the wire-level OptimizationType (used for AI output) to the Domain enum.
+    /// They share members today but live in different namespaces so Domain stays free
+    /// of Application dependencies.
+    /// </summary>
+    private static DomainOptimizationType MapOptimizationType(OptimizationType wire) => wire switch
+    {
+        OptimizationType.LoadBalance => DomainOptimizationType.LoadBalance,
+        OptimizationType.PowerAdjust => DomainOptimizationType.PowerAdjust,
+        OptimizationType.RouteReconfigure => DomainOptimizationType.RouteReconfigure,
+        OptimizationType.AntennaRetune => DomainOptimizationType.AntennaRetune,
+        OptimizationType.CapacityExpansion => DomainOptimizationType.CapacityExpansion,
+        _ => throw new ArgumentOutOfRangeException(nameof(wire), wire, "Unknown optimization type")
     };
 }

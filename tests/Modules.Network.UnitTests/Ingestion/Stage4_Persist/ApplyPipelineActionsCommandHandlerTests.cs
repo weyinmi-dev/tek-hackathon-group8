@@ -1,4 +1,5 @@
 using FluentAssertions;
+using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
@@ -176,23 +177,29 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
     }
 
     [Fact]
-    public async Task Handle_OptimizationAction_CountedButNotPersisted()
+    public async Task Handle_OptimizationAction_DispatchesCreateOptimizationCommand()
     {
         IngestionRun run = NewRun();
         WalkToPersisting(run);
 
-        ProposedOptimization optimization = Optimization();
-        var action = new CreateOptimizationAction("fp", optimization);
+        ProposedOptimization optimization = Optimization(tower: "LOS-T-014", impact: 0.7m);
+        var action = new CreateOptimizationAction("fingerprint-abc", optimization);
 
-        ApplyPipelineActionsCommandHandler handler = NewHandler(run: run, towers: Towers(Tower()));
+        var fakeSender = new FakeOptimizationSender();
+        ApplyPipelineActionsCommandHandler handler = NewHandler(
+            run: run, towers: Towers(Tower()), sender: fakeSender);
 
         Result<PipelineActionCounts> result = await handler.Handle(
             new ApplyPipelineActionsCommand(run.Id, [action]), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
         result.Value.OptimizationsCreated.Should().Be(1);
-        result.Value.AlertsCreated.Should().Be(0);
-        result.Value.TowerUpdates.Should().Be(0);
+
+        CreateOptimizationCommand dispatched = fakeSender.DispatchedOptimizations.Should().ContainSingle().Subject;
+        dispatched.IngestionRunId.Should().Be(run.Id);
+        dispatched.TowerCode.Should().Be("LOS-T-014");
+        dispatched.AnomalyFingerprint.Should().Be("fingerprint-abc");
+        dispatched.EstimatedImpact.Should().Be(0.7m);
     }
 
     [Fact]
@@ -250,12 +257,14 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         IngestionRun? run = null,
         IReadOnlyDictionary<string, TowerSnapshot>? towers = null,
         IAlertActionExecutor? alertExecutor = null,
-        ITowerRepository? towerRepo = null) =>
+        ITowerRepository? towerRepo = null,
+        ISender? sender = null) =>
         new(
             new FakeRunRepo(run),
             new FakeTowerSnapshotProvider(towers ?? Towers()),
             towerRepo ?? new FakeTowerRepository(),
             alertExecutor ?? new FakeAlertExecutor(_ => Result.Success(new AlertActionsResult(0, 0))),
+            sender ?? new FakeOptimizationSender(),
             new FakeUnitOfWork(),
             NullLogger<ApplyPipelineActionsCommandHandler>.Instance);
 
@@ -299,5 +308,39 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
     private sealed class FakeUnitOfWork : IUnitOfWork
     {
         public Task<int> SaveChangesAsync(CancellationToken _ = default) => Task.FromResult(0);
+    }
+
+    /// <summary>
+    /// Stub ISender that succeeds for CreateOptimizationCommand (returns a fresh Guid)
+    /// and refuses anything else — Stage 4 should only dispatch CreateOptimizationCommand.
+    /// </summary>
+    private sealed class FakeOptimizationSender : ISender
+    {
+        public List<CreateOptimizationCommand> DispatchedOptimizations { get; } = [];
+
+        public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken _ = default)
+        {
+            if (request is CreateOptimizationCommand opt)
+            {
+                DispatchedOptimizations.Add(opt);
+                return Task.FromResult((TResponse)(object)Result.Success(Guid.NewGuid()));
+            }
+
+            throw new InvalidOperationException(
+                $"Stage 4 unexpectedly dispatched {request!.GetType().Name}");
+        }
+
+        public Task<object?> Send(object request, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default)
+            where TRequest : IRequest =>
+            throw new NotImplementedException();
+
+        public IAsyncEnumerable<TResponse> CreateStream<TResponse>(IStreamRequest<TResponse> request, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
+
+        public IAsyncEnumerable<object?> CreateStream(object request, CancellationToken cancellationToken = default) =>
+            throw new NotImplementedException();
     }
 }

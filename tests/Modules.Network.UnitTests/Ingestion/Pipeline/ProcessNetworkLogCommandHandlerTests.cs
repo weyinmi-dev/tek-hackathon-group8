@@ -1,4 +1,5 @@
 using System.Text;
+using Application.Abstractions.Events;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -21,13 +22,13 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         "timestamp,tower_code\n2026-05-05T08:00:00Z,LOS-T-014\n");
 
     [Fact]
-    public async Task Handle_HappyPath_DispatchesAllFiveStagesInOrder_AndPublishesNotification()
+    public async Task Handle_HappyPath_DispatchesAllFiveStagesInOrder_AndQueuesIntegrationEvent()
     {
         var sender = new RecordingSender(eventsParsed: 1, anomaliesDetected: 1);
-        var publisher = new RecordingPublisher();
+        var bus = new RecordingEventBus();
         var repo = new InMemoryRunRepo();
 
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, publisher);
+        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, bus);
 
         Result<IngestionRunSummary> result = await handler.Handle(NewCommand(), CancellationToken.None);
 
@@ -37,7 +38,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
             nameof(AnalyzeNetworkBatchCommand),
             nameof(DecidePipelineActionsCommand),
             nameof(ApplyPipelineActionsCommand));
-        publisher.PublishedNotifications.Should().ContainSingle()
+        bus.Published.Should().ContainSingle()
             .Which.Should().BeOfType<PipelineCompletedNotification>();
     }
 
@@ -47,7 +48,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         var sender = new RecordingSender(eventsParsed: 5, anomaliesDetected: 1);
         var repo = new InMemoryRunRepo();
 
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, new RecordingPublisher());
+        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, new RecordingEventBus());
 
         Result<IngestionRunSummary> result = await handler.Handle(NewCommand(), CancellationToken.None);
 
@@ -79,7 +80,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
                 TowerUpdates: 2));
         var repo = new InMemoryRunRepo();
 
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, new RecordingPublisher());
+        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, new RecordingEventBus());
 
         Result<IngestionRunSummary> result = await handler.Handle(NewCommand(), CancellationToken.None);
 
@@ -107,8 +108,8 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         repo.Runs.Add(prior);
 
         var sender = new RecordingSender();
-        var publisher = new RecordingPublisher();
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, publisher);
+        var bus = new RecordingEventBus();
+        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, bus);
 
         Result<IngestionRunSummary> result = await handler.Handle(NewCommand(), CancellationToken.None);
 
@@ -116,7 +117,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         result.Value.IngestionRunId.Should().Be(prior.Id);
         result.Value.DeduplicatedFromPriorRun.Should().BeTrue();
         sender.DispatchedCommandTypes.Should().BeEmpty();
-        publisher.PublishedNotifications.Should().BeEmpty();
+        bus.Published.Should().BeEmpty();
         repo.Runs.Should().ContainSingle(); // no new run created
     }
 
@@ -128,9 +129,9 @@ public sealed class ProcessNetworkLogCommandHandlerTests
             FailAt = nameof(AnalyzeNetworkBatchCommand)
         };
         var repo = new InMemoryRunRepo();
-        var publisher = new RecordingPublisher();
+        var bus = new RecordingEventBus();
 
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, publisher);
+        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, bus);
 
         Result<IngestionRunSummary> result = await handler.Handle(NewCommand(), CancellationToken.None);
 
@@ -140,22 +141,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         IngestionRun run = repo.Runs.Should().ContainSingle().Subject;
         run.Status.Should().Be(IngestionStatus.Failed);
         run.FailureReason.Should().Contain("AiSchemaInvalid");
-        publisher.PublishedNotifications.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task Handle_ProjectionHandlerFailure_StillCompletesRun()
-    {
-        var sender = new RecordingSender(eventsParsed: 1);
-        var publisher = new RecordingPublisher { ThrowOnPublish = true };
-        var repo = new InMemoryRunRepo();
-
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, publisher);
-
-        Result<IngestionRunSummary> result = await handler.Handle(NewCommand(), CancellationToken.None);
-
-        result.IsSuccess.Should().BeTrue();
-        repo.Runs.Single().Status.Should().Be(IngestionStatus.Completed);
+        bus.Published.Should().BeEmpty();
     }
 
     [Fact]
@@ -164,7 +150,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         var sender = new RecordingSender { FailAt = nameof(ParseNetworkLogCommand) };
         var repo = new InMemoryRunRepo();
 
-        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, new RecordingPublisher());
+        ProcessNetworkLogCommandHandler handler = NewHandler(repo, sender, new RecordingEventBus());
 
         await handler.Handle(NewCommand(), CancellationToken.None);
 
@@ -196,12 +182,12 @@ public sealed class ProcessNetworkLogCommandHandlerTests
     private static ProcessNetworkLogCommandHandler NewHandler(
         InMemoryRunRepo repo,
         ISender sender,
-        IPublisher publisher) =>
+        IEventBus eventBus) =>
         new(
             repo,
             new InMemoryUnitOfWork(),
             sender,
-            publisher,
+            eventBus,
             NullLogger<ProcessNetworkLogCommandHandler>.Instance);
 
     private sealed class InMemoryRunRepo : IIngestionRunRepository
@@ -324,22 +310,19 @@ public sealed class ProcessNetworkLogCommandHandlerTests
             throw new NotImplementedException();
     }
 
-    private sealed class RecordingPublisher : IPublisher
+    /// <summary>
+    /// Captures every integration event the orchestrator hands to the bus. In production,
+    /// IntegrationEventProcessorJob drains the queue and republishes via MediatR; tests
+    /// don't run that worker, so subscribers are intentionally not invoked here.
+    /// </summary>
+    private sealed class RecordingEventBus : IEventBus
     {
-        public List<INotification> PublishedNotifications { get; } = [];
-        public bool ThrowOnPublish { get; set; }
+        public List<IIntegrationEvent> Published { get; } = [];
 
-        public Task Publish(object notification, CancellationToken cancellationToken = default) =>
-            Publish((INotification)notification, cancellationToken);
-
-        public Task Publish<TNotification>(TNotification notification, CancellationToken cancellationToken = default)
-            where TNotification : INotification
+        public Task PublishAsync<T>(T integrationEvent, CancellationToken cancellationToken = default)
+            where T : class, IIntegrationEvent
         {
-            if (ThrowOnPublish)
-            {
-                throw new InvalidOperationException("projection failed");
-            }
-            PublishedNotifications.Add(notification);
+            Published.Add(integrationEvent);
             return Task.CompletedTask;
         }
     }

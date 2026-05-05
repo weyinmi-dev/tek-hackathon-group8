@@ -1,15 +1,20 @@
-using MediatR;
+using Application.Abstractions.Events;
 
 namespace Modules.Network.Application.Ingestion.Pipeline;
 
 /// <summary>
-/// Published by the orchestrator after Stage 4 succeeds and before the run is marked
-/// Completed. Subscribed by the Analytics module's dashboard projection handler (and
-/// any future projections — copilot KB indexing, SignalR push, etc.). Handlers run
-/// synchronously via MediatR; if any handler fails, the orchestrator still completes
-/// the run — projections are best-effort by design and shouldn't block ingestion.
+/// Stage-5 integration event. The orchestrator hands it to <c>IEventBus</c> which writes
+/// it onto the <c>InMemoryMessageQueue</c>; the existing <c>IntegrationEventProcessorJob</c>
+/// hosted service drains the queue and re-publishes via MediatR. This decouples the
+/// publish step from the orchestrator's request lifetime — slow or failing subscribers
+/// (the dashboard projection, future copilot KB indexer, etc.) don't fail the run.
+///
+/// NOT crash-safe: the queue is in-memory. Surviving a restart between Stage 4 commit
+/// and event publish requires a durable outbox table — intentionally deferred (see
+/// the deferred follow-ups in PR 6's summary).
 /// </summary>
 public sealed record PipelineCompletedNotification(
+    Guid Id,
     Guid IngestionRunId,
     string ContentHash,
     string FileName,
@@ -19,4 +24,4 @@ public sealed record PipelineCompletedNotification(
     int AlertsUpdated,
     int OptimizationsCreated,
     bool TopologyChanged,
-    DateTimeOffset CompletedAt) : INotification;
+    DateTimeOffset CompletedAt) : IntegrationEvent(Id);

@@ -1,3 +1,4 @@
+using Application.Abstractions.Events;
 using Application.Abstractions.Messaging;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -16,7 +17,7 @@ internal sealed class ProcessNetworkLogCommandHandler(
     IIngestionRunRepository runs,
     IUnitOfWork unitOfWork,
     ISender sender,
-    IPublisher publisher,
+    IEventBus eventBus,
     ILogger<ProcessNetworkLogCommandHandler> logger)
     : ICommandHandler<ProcessNetworkLogCommand, IngestionRunSummary>
 {
@@ -99,35 +100,29 @@ internal sealed class ProcessNetworkLogCommandHandler(
             }
 
             // ── Stage 5: Project ─────────────────────────────────────────────
-            // Publish notification under the Projecting status; subscribers update read models,
-            // KB index, etc. Failures inside subscribers are best-effort and don't fail the run.
+            // Hand the integration event to IEventBus, which queues it on the in-memory
+            // channel. The IntegrationEventProcessorJob hosted service drains the channel
+            // and re-publishes via MediatR — subscribers (dashboard projection, future
+            // copilot KB indexer) run on that worker, decoupled from the orchestrator's
+            // request lifetime. Slow / failing subscribers don't fail the run.
             DateTimeOffset projectStarted = DateTimeOffset.UtcNow;
             run.TransitionTo(IngestionStatus.Projecting);
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             PipelineActionCounts counts = persistResult.Value;
             int anomaliesDetected = counts.AlertsCreated + counts.AlertsUpdated;
-            try
-            {
-                await publisher.Publish(new PipelineCompletedNotification(
-                    IngestionRunId: run.Id,
-                    ContentHash: contentHash,
-                    FileName: request.FileName,
-                    EventsParsed: parseResult.Value,
-                    AnomaliesDetected: anomaliesDetected,
-                    AlertsCreated: counts.AlertsCreated,
-                    AlertsUpdated: counts.AlertsUpdated,
-                    OptimizationsCreated: counts.OptimizationsCreated,
-                    TopologyChanged: counts.TowerUpdates > 0,
-                    CompletedAt: DateTimeOffset.UtcNow), cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogError(
-                    ex,
-                    "Pipeline projection notification handler failed for run {IngestionRunId} — run will still complete",
-                    run.Id);
-            }
+            await eventBus.PublishAsync(new PipelineCompletedNotification(
+                Id: Guid.NewGuid(),
+                IngestionRunId: run.Id,
+                ContentHash: contentHash,
+                FileName: request.FileName,
+                EventsParsed: parseResult.Value,
+                AnomaliesDetected: anomaliesDetected,
+                AlertsCreated: counts.AlertsCreated,
+                AlertsUpdated: counts.AlertsUpdated,
+                OptimizationsCreated: counts.OptimizationsCreated,
+                TopologyChanged: counts.TowerUpdates > 0,
+                CompletedAt: DateTimeOffset.UtcNow), cancellationToken);
 
             DateTimeOffset projectEnded = DateTimeOffset.UtcNow;
             run.RecordStageTiming(new StageTiming(

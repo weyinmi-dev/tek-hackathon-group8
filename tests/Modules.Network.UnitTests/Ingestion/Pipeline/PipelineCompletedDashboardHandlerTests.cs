@@ -11,6 +11,7 @@ namespace Modules.Network.UnitTests.Ingestion.Pipeline;
 public sealed class PipelineCompletedDashboardHandlerTests
 {
     private static PipelineCompletedNotification SampleNotification(Guid? runId = null) => new(
+        Id: Guid.NewGuid(),
         IngestionRunId: runId ?? Guid.NewGuid(),
         ContentHash: "ABCDEF",
         FileName: "ops.csv",
@@ -48,7 +49,7 @@ public sealed class PipelineCompletedDashboardHandlerTests
         var dashboard = new InMemoryDashboard();
         PipelineCompletedDashboardHandler handler = NewHandler(dashboard);
 
-        Guid runId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
         await handler.Handle(SampleNotification(runId), CancellationToken.None);
         await handler.Handle(SampleNotification(runId), CancellationToken.None); // re-fire
 
