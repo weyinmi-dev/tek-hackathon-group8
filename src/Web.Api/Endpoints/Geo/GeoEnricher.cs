@@ -47,15 +47,18 @@ public sealed class GeoEnricher(ISiteGeoLookup geoLookup, ILogger<GeoEnricher> l
     }
 
     /// <summary>
-    /// Maximum wall-clock budget for an entire geo enrichment batch. Sized so the
-    /// whole endpoint comes in well under typical proxy timeouts (Next.js dev rewrites
-    /// can give up around 10–15s, and Aspire's DCP forwarding has its own ceilings).
-    /// First-cold-cache loads with 10–15 sites typically need 4–6s of Overpass time;
-    /// 8s is a generous ceiling that still keeps us safely inside any proxy window.
-    /// Anything not back by then is served with <c>geo: null</c> for that site, and
-    /// the next request hits the populated Redis cache.
+    /// Maximum wall-clock budget for an entire geo enrichment batch. Public Overpass
+    /// queues per-IP and routinely takes 20–30s per query under load, so the original
+    /// 8s ceiling killed every cold-cache batch outright and Redis never warmed —
+    /// /api/alerts shipped <c>geo: null</c> on every request even for valid towers.
+    /// 30s is the realistic ceiling: long enough that two sequential Overpass calls
+    /// per site in parallel can finish on a slow day, still well under Next.js dev
+    /// rewrite + Aspire DCP socket limits. Once Redis is warm (24h TTL) requests
+    /// resolve in single-digit ms regardless. The startup warmer (GeoCacheWarmer)
+    /// pre-fills the cache out of band so users don't pay this cost on the first
+    /// page load after a deploy.
     /// </summary>
-    private static readonly TimeSpan BatchBudget = TimeSpan.FromSeconds(8);
+    private static readonly TimeSpan BatchBudget = TimeSpan.FromSeconds(30);
 
     /// <summary>
     /// Resolve a batch of distinct site codes in parallel. Duplicates collapse before

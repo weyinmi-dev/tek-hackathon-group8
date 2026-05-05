@@ -10,4 +10,5 @@ public static class Tags
     public const string Documents = "Documents";
     public const string Mcp = "Mcp";
     public const string Energy = "Energy";
+    public const string Geo = "Geo";
 }

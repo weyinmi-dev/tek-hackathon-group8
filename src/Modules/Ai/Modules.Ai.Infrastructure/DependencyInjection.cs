@@ -245,6 +245,11 @@ public static class DependencyInjection
         });
 
         services.AddScoped<ISiteGeoLookup, SiteGeoLookup>();
+
+        // Pre-warm the OSM geo cache for every known tower in the background so the
+        // first /api/alerts | /api/energy/sites request after a fresh deploy doesn't
+        // blow GeoEnricher's batch budget against slow public Overpass.
+        services.AddHostedService<GeoCacheWarmer>();
     }
 
     private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration)

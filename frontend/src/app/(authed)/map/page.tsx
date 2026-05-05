@@ -6,7 +6,7 @@ import { TopBar } from "@/components/TopBar";
 import { NetworkMap, type MapMode } from "@/components/NetworkMap";
 import { Bar, Btn, Card, Pill, Section } from "@/components/UI";
 import { api } from "@/lib/api";
-import type { MapResponse, Tower } from "@/lib/types";
+import type { GeoSummary, MapResponse, Tower } from "@/lib/types";
 
 export default function MapPage() {
   const router = useRouter();
@@ -14,6 +14,8 @@ export default function MapPage() {
   const [sel, setSel] = useState<Tower | null>(null);
   const [dispatched, setDispatched] = useState<string | null>(null);
   const [mode, setMode] = useState<MapMode>("engineer");
+  const [geo, setGeo] = useState<GeoSummary | null>(null);
+  const [geoLoading, setGeoLoading] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -31,6 +33,34 @@ export default function MapPage() {
 
   useEffect(() => {
     setDispatched(null);
+  }, [sel?.id]);
+
+  // Fetch OSM geo context for the selected tower. Cold cache hits Overpass
+  // (slow); warm cache returns in single-digit ms. Per-tower fetch keeps
+  // /api/map fast and avoids burning Overpass quota on towers no one inspects.
+  useEffect(() => {
+    if (!sel) {
+      setGeo(null);
+      setGeoLoading(false);
+      return;
+    }
+    let alive = true;
+    setGeo(null);
+    setGeoLoading(true);
+    api
+      .geoForSite(sel.id)
+      .then((r) => {
+        if (alive) setGeo(r);
+      })
+      .catch(() => {
+        if (alive) setGeo(null);
+      })
+      .finally(() => {
+        if (alive) setGeoLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
   }, [sel?.id]);
 
   return (
@@ -186,6 +216,45 @@ export default function MapPage() {
               </div>
             </Card>
           )}
+          {sel && (geo || geoLoading) && (
+            <Section label="OSM GEO CONTEXT">
+              <Card pad={14}>
+                {geoLoading && !geo && (
+                  <div
+                    className="mono"
+                    style={{ fontSize: 11, color: "var(--ink-3)" }}
+                  >
+                    resolving…
+                  </div>
+                )}
+                {geo && (
+                  <>
+                    <GeoRow k="Region type" v={geo.regionType} />
+                    <GeoRow
+                      k="Accessibility"
+                      v={`${Math.round(geo.accessibilityScore)} / 100`}
+                    />
+                    <GeoRow
+                      k="Nearest fuel"
+                      v={
+                        geo.nearestFuelStationMetres != null
+                          ? `${(geo.nearestFuelStationMetres / 1000).toFixed(1)} km${geo.nearestFuelStationName ? ` · ${geo.nearestFuelStationName}` : ""}`
+                          : "—"
+                      }
+                    />
+                    <GeoRow
+                      k="Coordinates"
+                      v={`${geo.latitude.toFixed(4)}, ${geo.longitude.toFixed(4)}`}
+                      last={!geo.address}
+                    />
+                    {geo.address && (
+                      <GeoRow k="Address" v={geo.address} last />
+                    )}
+                  </>
+                )}
+              </Card>
+            </Section>
+          )}
           <Section label="REGIONS">
             <Card pad={0}>
               {(data?.regions ?? []).map((r, i, all) => {
@@ -279,6 +348,33 @@ export default function MapPage() {
         </div>
       </div>
     </>
+  );
+}
+
+function GeoRow({ k, v, last }: { k: string; v: string; last?: boolean }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        padding: "8px 0",
+        borderBottom: last ? 0 : "1px solid var(--line)",
+        fontSize: 12,
+        gap: 12,
+      }}
+    >
+      <span style={{ color: "var(--ink-3)" }}>{k}</span>
+      <span
+        className="mono"
+        style={{
+          textAlign: "right",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {v}
+      </span>
+    </div>
   );
 }
 

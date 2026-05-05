@@ -148,4 +148,5 @@ public interface IAlertRepository
     Task<Alert?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
     Task AddRangeAsync(IEnumerable<Alert> alerts, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyDictionary<AlertSeverity, int>> CountBySeverityAsync(CancellationToken cancellationToken = default);
 }

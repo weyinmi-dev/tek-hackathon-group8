@@ -10,6 +10,7 @@ export type AlertSeverityFilter = "all" | "critical" | "warn" | "info";
 interface AlertsSnapshot {
   filter: AlertSeverityFilter;
   selectedId: string | null;
+  showAcknowledged: boolean;
 }
 
 /**
@@ -22,15 +23,23 @@ interface AlertsSnapshot {
  * Persistence shape is intentionally tiny — selecting "selectedId" not "selected"
  * means we don't replay stale full alert payloads after a server-side change.
  */
+type CountsShape = { all: number; critical: number; warn: number; info: number };
+const ZERO_COUNTS: CountsShape = { all: 0, critical: 0, warn: 0, info: 0 };
+
 export class AlertsStore {
   alerts: Alert[] = [];
   filter: AlertSeverityFilter = "all";
   selectedId: string | null = null;
+  // Mirrors AnomaliesStore.showAcknowledged — when false, acknowledged alerts
+  // are filtered out client-side via the `visible` getter so the operator's
+  // active-work view stays clean by default. Persisted across nav/refresh.
+  showAcknowledged = false;
   loading = false;
   error: string | null = null;
   acking: string | null = null;
   actionToast: { id: string; msg: string } | null = null;
   hasHydrated = false;
+  counts: CountsShape = ZERO_COUNTS;
 
   private _disposePersist: (() => void) | null = null;
   private _toastTimer: ReturnType<typeof setTimeout> | null = null;
@@ -47,21 +56,25 @@ export class AlertsStore {
   }
 
   get snapshot(): AlertsSnapshot {
-    return { filter: this.filter, selectedId: this.selectedId };
+    return {
+      filter: this.filter,
+      selectedId: this.selectedId,
+      showAcknowledged: this.showAcknowledged,
+    };
+  }
+
+  // Client-side ack filter — mirrors AnomaliesStore.visible. The backend
+  // already returns acknowledged alerts in the default ListAsync path, so
+  // this is purely a presentation concern.
+  get visible(): Alert[] {
+    return this.showAcknowledged
+      ? this.alerts
+      : this.alerts.filter(a => a.status !== "acknowledged");
   }
 
   get selected(): Alert | null {
     if (!this.selectedId) return null;
     return this.alerts.find(a => a.id === this.selectedId) ?? null;
-  }
-
-  get counts() {
-    return {
-      all: this.alerts.length,
-      critical: this.alerts.filter(a => a.sev === "critical").length,
-      warn: this.alerts.filter(a => a.sev === "warn").length,
-      info: this.alerts.filter(a => a.sev === "info").length,
-    };
   }
 
   setFilter(f: AlertSeverityFilter): void {
@@ -70,6 +83,10 @@ export class AlertsStore {
 
   setSelected(id: string | null): void {
     this.selectedId = id;
+  }
+
+  toggleShowAcknowledged(): void {
+    this.showAcknowledged = !this.showAcknowledged;
   }
 
   async load(): Promise<void> {
@@ -81,10 +98,16 @@ export class AlertsStore {
         this.alerts = r;
         // Keep a valid selection — prefer the previously-selected alert if it
         // still exists in the new list, otherwise default to the first one so
-        // the detail panel never goes blank on filter change.
+        // the detail panel never goes blank on filter change. Default to the
+        // first *visible* alert so the panel doesn't open onto a row hidden
+        // by the show-acknowledged toggle.
         const stillThere = this.selectedId && r.find(a => a.id === this.selectedId);
-        if (!stillThere) this.selectedId = r[0]?.id ?? null;
+        if (!stillThere) this.selectedId = this.visible[0]?.id ?? null;
       });
+      // Refresh counts in the background — keeps the sidebar badge live after
+      // ack/assign/dispatch without forcing the alerts list to be re-fetched
+      // for callers that only need totals.
+      void this.loadCounts();
     } catch (e) {
       // Surface the failure: console for DevTools + store.error for an in-page
       // banner. Without this both an empty fleet and a 500 response render as
@@ -96,11 +119,24 @@ export class AlertsStore {
     }
   }
 
+  // Lightweight: hits /alerts/counts (DB-side GROUP BY, no geo enrichment).
+  // The sidebar uses this on mount instead of load() so first paint isn't
+  // blocked on the full alerts payload + OSM lookups.
+  async loadCounts(): Promise<void> {
+    try {
+      const r = await api.alertsCounts();
+      runInAction(() => { this.counts = r; });
+    } catch (e) {
+      console.warn("[AlertsStore] loadCounts failed:", e);
+    }
+  }
+
   async ack(id: string): Promise<void> {
     this.acking = id;
     try {
       await api.ackAlert(id);
       await this.load();
+      this.flashAction(id, "Alert acknowledged");
     } finally {
       runInAction(() => { this.acking = null; });
     }
