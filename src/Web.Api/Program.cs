@@ -1,3 +1,4 @@
+using Web.Api.Endpoints;
 using System.Text;
 using System.Text.Json.Serialization;
 using Application;
@@ -115,15 +116,13 @@ RouteGroupBuilder apiGroup = app.MapGroup("api");
 
 app.MapEndpoints(apiGroup);
 apiGroup.MapIoTEndpoints();
-// app.MapSocialEndpoints();
-// app.MapSocialEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await app.ApplyMigrationsAsync();
-    await app.SeedDataAsync();
+   
+   
 }
 
 app.UseCors();
