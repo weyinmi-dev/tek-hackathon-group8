@@ -10,6 +10,7 @@ export type AlertSeverityFilter = "all" | "critical" | "warn" | "info";
 interface AlertsSnapshot {
   filter: AlertSeverityFilter;
   selectedId: string | null;
+  showAcknowledged: boolean;
 }
 
 /**
@@ -29,6 +30,10 @@ export class AlertsStore {
   alerts: Alert[] = [];
   filter: AlertSeverityFilter = "all";
   selectedId: string | null = null;
+  // Mirrors AnomaliesStore.showAcknowledged — when false, acknowledged alerts
+  // are filtered out client-side via the `visible` getter so the operator's
+  // active-work view stays clean by default. Persisted across nav/refresh.
+  showAcknowledged = false;
   loading = false;
   error: string | null = null;
   acking: string | null = null;
@@ -51,7 +56,20 @@ export class AlertsStore {
   }
 
   get snapshot(): AlertsSnapshot {
-    return { filter: this.filter, selectedId: this.selectedId };
+    return {
+      filter: this.filter,
+      selectedId: this.selectedId,
+      showAcknowledged: this.showAcknowledged,
+    };
+  }
+
+  // Client-side ack filter — mirrors AnomaliesStore.visible. The backend
+  // already returns acknowledged alerts in the default ListAsync path, so
+  // this is purely a presentation concern.
+  get visible(): Alert[] {
+    return this.showAcknowledged
+      ? this.alerts
+      : this.alerts.filter(a => a.status !== "acknowledged");
   }
 
   get selected(): Alert | null {
@@ -67,6 +85,10 @@ export class AlertsStore {
     this.selectedId = id;
   }
 
+  toggleShowAcknowledged(): void {
+    this.showAcknowledged = !this.showAcknowledged;
+  }
+
   async load(): Promise<void> {
     this.loading = true;
     this.error = null;
@@ -76,9 +98,11 @@ export class AlertsStore {
         this.alerts = r;
         // Keep a valid selection — prefer the previously-selected alert if it
         // still exists in the new list, otherwise default to the first one so
-        // the detail panel never goes blank on filter change.
+        // the detail panel never goes blank on filter change. Default to the
+        // first *visible* alert so the panel doesn't open onto a row hidden
+        // by the show-acknowledged toggle.
         const stillThere = this.selectedId && r.find(a => a.id === this.selectedId);
-        if (!stillThere) this.selectedId = r[0]?.id ?? null;
+        if (!stillThere) this.selectedId = this.visible[0]?.id ?? null;
       });
       // Refresh counts in the background — keeps the sidebar badge live after
       // ack/assign/dispatch without forcing the alerts list to be re-fetched
@@ -112,6 +136,7 @@ export class AlertsStore {
     try {
       await api.ackAlert(id);
       await this.load();
+      this.flashAction(id, "Alert acknowledged");
     } finally {
       runInAction(() => { this.acking = null; });
     }

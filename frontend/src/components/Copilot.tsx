@@ -129,7 +129,7 @@ export const Copilot = observer(function Copilot({
             onKeyDown={(e) => {
               if (e.key === "Enter") ask(input);
             }}
-            placeholder='Ask: "why is Lagos West slow?"'
+            placeholder='Ask: "What would you like to know in the NOCs?"'
             disabled={chat.sending}
             style={{
               flex: 1,
