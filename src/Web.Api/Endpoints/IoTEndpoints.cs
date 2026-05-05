@@ -10,15 +10,23 @@ public static class IoTEndpoints
         group.MapPost("/iot-data", ReceiveIoTData);
     }
 
-    private static IResult ReceiveIoTData([FromBody] TowerData data)
+    private static IResult ReceiveIoTData(TowerData data)
     {
-        // ✅ store data
+        // Store data
         towerStore.Add(data);
 
-        return Results.Ok(data);
+        // AI decision
+        var decision = AIEngine.Process(data);
+
+        return Results.Ok(new
+        {
+            Tower = data,
+            Decision = decision
+        });
     }
 }
 
+// Model
 public class TowerData
 {
     public string TowerId { get; set; }
@@ -26,3 +34,4 @@ public class TowerData
     public double BatteryLevel { get; set; }
     public string Location { get; set; }
 }
+
