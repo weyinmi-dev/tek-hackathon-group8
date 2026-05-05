@@ -362,3 +362,40 @@ export type EnergyMetricsResponse = {
   avgBatteryPct: number;
   dailyOpexNgn: number;
 };
+
+// ── Network ingestion ────────────────────────────────────────────────────────
+// Mirrors Modules.Network.Application.Ingestion.Pipeline.IngestionRunSummary
+// returned by POST /api/network/ingest.
+
+export type IngestionStatus =
+  | "Pending"
+  | "Parsing"
+  | "Analyzing"
+  | "Deciding"
+  | "Persisting"
+  | "Projecting"
+  | "Completed"
+  | "Failed";
+
+export type StageTiming = {
+  stage: IngestionStatus;
+  startedAt: string;
+  endedAt: string;
+  succeeded: boolean;
+  failureReason: string | null;
+};
+
+export type IngestionRunSummary = {
+  ingestionRunId: string;
+  contentHash: string;
+  finalStatus: IngestionStatus;
+  eventsParsed: number;
+  anomaliesDetected: number;
+  alertsCreated: number;
+  alertsUpdated: number;
+  optimizationsCreated: number;
+  topologyChanged: boolean;
+  deduplicatedFromPriorRun: boolean;
+  stageTimings: StageTiming[];
+  failureReason: string | null;
+};
