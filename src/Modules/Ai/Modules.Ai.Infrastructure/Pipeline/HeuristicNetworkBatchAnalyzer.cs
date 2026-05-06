@@ -21,6 +21,7 @@ internal sealed class HeuristicNetworkBatchAnalyzer : INetworkBatchAnalyzer
     public Task<Result<AiAnalysisResult>> AnalyzeAsync(
         Guid ingestionRunId,
         IReadOnlyList<NetworkEvent> events,
+        string? mcpFilePath = null,
         CancellationToken cancellationToken = default)
     {
         if (events.Count == 0)

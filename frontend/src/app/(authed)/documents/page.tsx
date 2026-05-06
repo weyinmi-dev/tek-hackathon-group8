@@ -194,7 +194,7 @@ export default function DocumentsPage() {
           <Section label="AI PIPELINE · NETWORK LOGS">
             <Card pad={14}>
               <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginBottom: 8 }}>
-                Log files (.csv / .json / .xlsx / .txt) trigger the 5-stage pipeline.
+                Log files (.csv / .json / .jsonl / .xlsx / .txt / .log) trigger the 5-stage pipeline.
               </div>
               <Step n="1" label="Parse"     sub="Detect format, extract events" />
               <Step n="2" label="Analyze"   sub="AI anomaly detection" />
@@ -494,7 +494,7 @@ function IngestLogModal({
             <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 4 }}>
               {staged
                 ? `${formatBytes(staged.size)} · ${staged.type || "unknown type"}`
-                : "or click to browse · .csv .json .xlsx .txt"}
+                : "or click to browse · .csv .json .jsonl .xlsx .txt .log"}
             </div>
             <input
               ref={fileRef} type="file" hidden

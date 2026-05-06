@@ -10,7 +10,14 @@ namespace Modules.Network.Application.Ingestion.Stage2_Analyze;
 /// <c>Analyzing</c>; the orchestrator owns transitions.
 /// </summary>
 public sealed record AnalyzeNetworkBatchCommand(
-    Guid IngestionRunId) : ICommand<AiAnalysisResult>, IIngestionPipelineRequest
+    Guid IngestionRunId,
+    /// <summary>
+    /// Telcopilot-relative path of the staged source file (e.g.
+    /// <c>uploads/a1b2c3d4/events.csv</c>). Forwarded from the orchestrator so the
+    /// AI analyzer can read the raw file content for enriched prompt context via
+    /// <c>IFileStagingService.TryReadTextAsync</c>. Null when not available.
+    /// </summary>
+    string? McpFilePath = null) : ICommand<AiAnalysisResult>, IIngestionPipelineRequest
 {
     public string StageName => "Analyze";
 }

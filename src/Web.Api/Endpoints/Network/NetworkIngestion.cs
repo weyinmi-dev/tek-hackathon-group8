@@ -38,7 +38,7 @@ public sealed class NetworkIngestion : IEndpoint
             await using Stream content = file.OpenReadStream();
             Result<IngestionRunSummary> result = await sender.Send(new ProcessNetworkLogCommand(
                 FileName: file.FileName,
-                ContentType: file.ContentType,
+                ContentType: file.ContentType ?? string.Empty,
                 Content: content,
                 SubmittedBy: actor), ct);
 

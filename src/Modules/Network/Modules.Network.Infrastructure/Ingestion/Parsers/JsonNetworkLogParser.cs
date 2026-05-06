@@ -27,7 +27,8 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
 
     public bool CanParse(string contentType, string fileName) =>
         contentType.Contains("json", StringComparison.OrdinalIgnoreCase) ||
-        fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase);
+        fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
+        fileName.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase);
 
     public async Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
         Guid ingestionRunId,
@@ -39,10 +40,12 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
         {
             doc = await JsonDocument.ParseAsync(content, DocumentOptions, cancellationToken).ConfigureAwait(false);
         }
-        catch (JsonException ex)
+        catch (JsonException)
         {
-            return Result.Failure<IReadOnlyList<NetworkEvent>>(
-                NetworkLogErrors.MalformedFile($"invalid JSON: {ex.Message}"));
+            // Treat malformed JSON as a malformed file rather than attempting a
+            // blind JSONL fallback — callers should upload JSONL explicitly.
+            if (content.CanSeek) content.Seek(0, SeekOrigin.Begin);
+            return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.MalformedFile("invalid JSON"));
         }
 
         using (doc)
@@ -59,7 +62,7 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
             {
                 return Result.Failure<IReadOnlyList<NetworkEvent>>(
                     NetworkLogErrors.MalformedFile(
-                        "expected a top-level array or an object with an 'events' array property"));
+                        "expected a top-level array, an object with an 'events' array property, or newline-delimited JSON objects"));
             }
 
             int arrayLength = rowsElement.GetArrayLength();
@@ -93,6 +96,58 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
 
             return Result.Success<IReadOnlyList<NetworkEvent>>(events);
         }
+    }
+
+    private static async Task<Result<IReadOnlyList<NetworkEvent>>> ParseJsonlAsync(
+        Guid ingestionRunId,
+        Stream content,
+        CancellationToken cancellationToken)
+    {
+        using var reader = new StreamReader(content, leaveOpen: true);
+        var events = new List<NetworkEvent>();
+        int rowNumber = 0;
+        string? line;
+
+        while ((line = await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false)) != null)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            line = line.Trim();
+            if (string.IsNullOrEmpty(line)) continue;
+
+            rowNumber++;
+            JsonElement element;
+            try
+            {
+                using var rowDoc = JsonDocument.Parse(line, DocumentOptions);
+                element = rowDoc.RootElement.Clone();
+            }
+            catch (JsonException ex)
+            {
+                return Result.Failure<IReadOnlyList<NetworkEvent>>(
+                    NetworkLogErrors.MalformedRow(rowNumber, $"invalid JSON: {ex.Message}"));
+            }
+
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return Result.Failure<IReadOnlyList<NetworkEvent>>(
+                    NetworkLogErrors.MalformedRow(rowNumber, "expected an object"));
+            }
+
+            Result<NetworkEvent> rowResult = BuildEvent(ingestionRunId, element, rowNumber);
+            if (rowResult.IsFailure)
+            {
+                return Result.Failure<IReadOnlyList<NetworkEvent>>(rowResult.Error);
+            }
+
+            events.Add(rowResult.Value);
+        }
+
+        if (events.Count == 0)
+        {
+            return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile());
+        }
+
+        return Result.Success<IReadOnlyList<NetworkEvent>>(events);
     }
 
     private static Result<NetworkEvent> BuildEvent(Guid ingestionRunId, JsonElement row, int rowNumber)

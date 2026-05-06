@@ -28,15 +28,21 @@ internal sealed class SemanticKernelNetworkTopologyMappingSkill(Kernel kernel) :
           - If neither holds, return { "statusChanges": [], "metricUpdates": [] }.
           - Use the towerCode strings as they appear in the events.
 
+        {{$raw_context}}
         Events:
         {{$events}}
         """;
 
     public async Task<Result<TopologyDelta?>> InvokeAsync(
         string eventsJson,
+        string? rawContext = null,
         CancellationToken cancellationToken = default)
     {
-        var args = new KernelArguments { ["events"] = eventsJson };
+        var args = new KernelArguments
+        {
+            ["events"] = eventsJson,
+            ["raw_context"] = SemanticKernelNetworkAnomalySkill.BuildRawContextBlock(rawContext),
+        };
 
         // Topology returns a single object (not an items envelope), so use the raw invoker
         // and treat an "everything-empty" object as a deliberate null delta.

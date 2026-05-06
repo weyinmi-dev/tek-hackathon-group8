@@ -23,6 +23,7 @@ internal sealed class SemanticKernelNetworkEnergySkill(Kernel kernel, IEnergyApi
         - Use tower/site codes from the events or the energy snapshot; do not invent codes.
         - If no observations, return { "observations": [] }.
 
+        {{$raw_context}}
         Events:
         {{$events}}
 
@@ -30,7 +31,10 @@ internal sealed class SemanticKernelNetworkEnergySkill(Kernel kernel, IEnergyApi
         {{$energy_snapshot}}
         """;
 
-    public async Task<Result<string>> InvokeAsync(string eventsJson, CancellationToken cancellationToken = default)
+    public async Task<Result<string>> InvokeAsync(
+        string eventsJson,
+        string? rawContext = null,
+        CancellationToken cancellationToken = default)
     {
         // Fetch live energy state to ground the model's reasoning.
         var sites = await energy.ListSitesAsync(cancellationToken);
@@ -39,7 +43,12 @@ internal sealed class SemanticKernelNetworkEnergySkill(Kernel kernel, IEnergyApi
         var snapshot = new { sites, anomalies };
         string snapshotJson = JsonSerializer.Serialize(snapshot, new JsonSerializerOptions { WriteIndented = false });
 
-        var args = new KernelArguments { ["events"] = eventsJson, ["energy_snapshot"] = snapshotJson };
+        var args = new KernelArguments
+        {
+            ["events"] = eventsJson,
+            ["energy_snapshot"] = snapshotJson,
+            ["raw_context"] = SemanticKernelNetworkAnomalySkill.BuildRawContextBlock(rawContext),
+        };
         Result<string> result = await KernelJsonInvoker.InvokeAsync<string>(kernel, Prompt, args, cancellationToken);
 
         return result.IsSuccess

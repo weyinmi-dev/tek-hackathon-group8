@@ -30,15 +30,21 @@ internal sealed class SemanticKernelNetworkAnomalySkill(Kernel kernel) : INetwor
           - If no anomalies are detected, return { "items": [] }.
           - confidence must reflect how strongly the evidence supports the anomaly.
 
+        {{$raw_context}}
         Events:
         {{$events}}
         """;
 
     public async Task<Result<IReadOnlyList<DetectedAnomaly>>> InvokeAsync(
         string eventsJson,
+        string? rawContext = null,
         CancellationToken cancellationToken = default)
     {
-        var args = new KernelArguments { ["events"] = eventsJson };
+        var args = new KernelArguments
+        {
+            ["events"] = eventsJson,
+            ["raw_context"] = BuildRawContextBlock(rawContext),
+        };
         Result<List<DetectedAnomaly>> result =
             await KernelJsonInvoker.InvokeAsync<List<DetectedAnomaly>>(kernel, Prompt, args, cancellationToken);
 
@@ -46,4 +52,9 @@ internal sealed class SemanticKernelNetworkAnomalySkill(Kernel kernel) : INetwor
             ? Result.Success<IReadOnlyList<DetectedAnomaly>>(result.Value)
             : Result.Failure<IReadOnlyList<DetectedAnomaly>>(result.Error);
     }
+
+    internal static string BuildRawContextBlock(string? rawContext) =>
+        string.IsNullOrWhiteSpace(rawContext)
+            ? string.Empty
+            : $"Source file excerpt (read via MCP filesystem server — use for additional context):\n{rawContext}\n";
 }

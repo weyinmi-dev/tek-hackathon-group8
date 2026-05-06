@@ -13,14 +13,18 @@ internal sealed class TxtNetworkLogParser : INetworkLogParser
     public string Format => "txt";
 
     public bool CanParse(string contentType, string fileName) =>
-        contentType.Equals("text/plain", StringComparison.OrdinalIgnoreCase) ||
-        contentType.Equals("text/tab-separated-values", StringComparison.OrdinalIgnoreCase) ||
+        contentType.StartsWith("text/plain", StringComparison.OrdinalIgnoreCase) ||
+        contentType.StartsWith("text/tab-separated-values", StringComparison.OrdinalIgnoreCase) ||
         fileName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) ||
-        fileName.EndsWith(".tsv", StringComparison.OrdinalIgnoreCase);
+        fileName.EndsWith(".tsv", StringComparison.OrdinalIgnoreCase) ||
+        fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
 
-    public Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    public async Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
-        CancellationToken cancellationToken = default) =>
-        DelimitedRowParser.ParseAsync(ingestionRunId, content, delimiter: "\t", cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        const string delimiter = "\t";
+        return await DelimitedRowParser.ParseAsync(ingestionRunId, content, delimiter, cancellationToken);
+    }
 }

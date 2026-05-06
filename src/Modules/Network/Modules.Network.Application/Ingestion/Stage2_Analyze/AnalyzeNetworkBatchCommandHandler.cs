@@ -36,7 +36,8 @@ internal sealed class AnalyzeNetworkBatchCommandHandler(
             "Run {IngestionRunId}: invoking AI analyzer over {EventCount} events",
             run.Id, events.Count);
 
-        Result<AiAnalysisResult> analysisResult = await analyzer.AnalyzeAsync(run.Id, events, cancellationToken);
+        Result<AiAnalysisResult> analysisResult = await analyzer.AnalyzeAsync(
+            run.Id, events, request.McpFilePath, cancellationToken);
         return analysisResult;
     }
 }

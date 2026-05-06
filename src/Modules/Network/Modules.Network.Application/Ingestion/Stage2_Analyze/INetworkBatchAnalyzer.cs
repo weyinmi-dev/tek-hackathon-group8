@@ -12,8 +12,15 @@ namespace Modules.Network.Application.Ingestion.Stage2_Analyze;
 /// </summary>
 public interface INetworkBatchAnalyzer
 {
+    /// <param name="mcpFilePath">
+    /// Telcopilot-relative path of the staged source file (e.g.
+    /// <c>uploads/a1b2c3d4/events.csv</c>). When provided, the SK-backed
+    /// implementation reads the raw file and includes it as additional context in
+    /// prompts. Null-safe — heuristic and stub implementations ignore it.
+    /// </param>
     Task<Result<AiAnalysisResult>> AnalyzeAsync(
         Guid ingestionRunId,
         IReadOnlyList<NetworkEvent> events,
+        string? mcpFilePath = null,
         CancellationToken cancellationToken = default);
 }

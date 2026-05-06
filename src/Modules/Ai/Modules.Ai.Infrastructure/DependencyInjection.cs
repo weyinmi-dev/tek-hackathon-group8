@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Npgsql;
+using Application.Abstractions.Storage;
 using Modules.Ai.Application.Mcp.Clients;
 using Modules.Ai.Application.Mcp.Contracts;
 using Modules.Ai.Application.Mcp.Registry;
@@ -148,6 +149,8 @@ public static class DependencyInjection
                     ResponseFormat = "json_object"
                 });
 
+                sp.GetRequiredService<FileMcpClient>().AddToKernelBuilder(kb);
+
                 Kernel k = kb.Build();
                 k.Plugins.AddFromObject(sp.GetRequiredService<DiagnosticsSkill>(),    nameof(DiagnosticsSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<OutageSkill>(),         nameof(OutageSkill));
@@ -239,6 +242,14 @@ public static class DependencyInjection
 
         services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
         services.AddScoped<IMcpInvoker, McpInvoker>();
+
+        // FileMcpClient starts the @modelcontextprotocol/server-filesystem subprocess ONCE at
+        // startup and caches the resulting KernelFunction list. The hosted service triggers
+        // initialization; the kernel factory reads the cached list synchronously (no blocking,
+        // no per-request process spawning). If npx or the package is unavailable, the FS plugin
+        // is simply absent and nothing else breaks.
+        services.AddSingleton<FileMcpClient>();
+        services.AddHostedService<FileMcpClientInitializer>();
     }
 
     /// <summary>
@@ -292,6 +303,11 @@ public static class DependencyInjection
     {
         DocumentsOptions docs = configuration.GetSection(DocumentsOptions.SectionName).Get<DocumentsOptions>() ?? new DocumentsOptions();
         services.AddSingleton(docs);
+
+        // FileStagingService persists uploaded bytes under .telcopilot/uploads/ so they are
+        // accessible to the @modelcontextprotocol/server-filesystem MCP server (FS plugin)
+        // for copilot queries and to Stage-2 for raw-content enrichment of SK prompts.
+        services.AddSingleton<IFileStagingService, FileStagingService>();
 
         // Local-disk provider — fully wired and the default destination for /documents uploads.
         services.AddSingleton<IDocumentStorageProvider, LocalDocumentStorageProvider>();

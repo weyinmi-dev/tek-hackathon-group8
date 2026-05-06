@@ -1,5 +1,6 @@
 using Application.Abstractions.Events;
 using Application.Abstractions.Messaging;
+using Application.Abstractions.Storage;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
@@ -18,6 +19,7 @@ internal sealed class ProcessNetworkLogCommandHandler(
     IUnitOfWork unitOfWork,
     ISender sender,
     IEventBus eventBus,
+    IFileStagingService staging,
     ILogger<ProcessNetworkLogCommandHandler> logger)
     : ICommandHandler<ProcessNetworkLogCommand, IngestionRunSummary>
 {
@@ -25,13 +27,24 @@ internal sealed class ProcessNetworkLogCommandHandler(
         ProcessNetworkLogCommand request,
         CancellationToken cancellationToken)
     {
+        
         // 1. Buffer the file once so we can hash it AND re-read it inside Stage 1's parser.
         byte[] bytes = await ReadAllBytesAsync(request.Content, cancellationToken);
         string contentHash = Fingerprints.ContentHash(bytes);
 
-        // 2. File-level idempotency. Re-uploading the same bytes resolves to the original run.
+        // Persist to the telcopilot uploads directory so the MCP filesystem server
+        // (FS plugin) can expose it for copilot queries and Stage-2 can read the raw
+        // content for enriched SK prompts. Failure is non-fatal — the pipeline runs
+        // with events-only context if staging is unavailable.
+        string? mcpFilePath = request.McpFilePath
+            ?? await staging.StageAsync(contentHash, request.FileName, bytes, cancellationToken);
+
+        // 2. File-level idempotency. Re-uploading the same bytes resolves to the original run,
+        //    but only when that run succeeded. Failed runs are re-processed so a retry after a
+        //    fix (e.g. a transient AI error) actually runs the pipeline instead of replaying the
+        //    stored failure.
         IngestionRun? prior = await runs.GetByContentHashAsync(contentHash, cancellationToken);
-        if (prior is not null)
+        if (prior is not null && prior.Status == IngestionStatus.Completed)
         {
             logger.LogInformation(
                 "Ingestion short-circuited — content hash {ContentHash} already processed as run {IngestionRunId}",
@@ -72,7 +85,7 @@ internal sealed class ProcessNetworkLogCommandHandler(
             // ── Stage 2: Analyze ─────────────────────────────────────────────
             Result<AiAnalysisResult> analysisResult = await RunStageAsync(
                 run, IngestionStatus.Analyzing,
-                () => sender.Send(new AnalyzeNetworkBatchCommand(run.Id), cancellationToken),
+                () => sender.Send(new AnalyzeNetworkBatchCommand(run.Id, mcpFilePath), cancellationToken),
                 cancellationToken);
             if (analysisResult.IsFailure)
             {

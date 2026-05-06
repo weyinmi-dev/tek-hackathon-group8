@@ -17,4 +17,11 @@ public sealed record ProcessNetworkLogCommand(
     string FileName,
     string ContentType,
     Stream Content,
-    string SubmittedBy) : ICommand<IngestionRunSummary>;
+    string SubmittedBy,
+    /// <summary>
+    /// Path of the staged file relative to the telcopilot root (e.g.
+    /// <c>uploads/a1b2c3d4/events.csv</c>). Set by the endpoint before dispatch via
+    /// <c>IFileStagingService</c> so the MCP filesystem server and the Stage-2 AI
+    /// analyzer can reference the raw bytes. Null when staging was not available.
+    /// </summary>
+    string? McpFilePath = null) : ICommand<IngestionRunSummary>;

@@ -25,15 +25,21 @@ internal sealed class SemanticKernelNetworkOptimizationSkill(Kernel kernel) : IN
           - At most one action per tower per type.
           - If no actions are warranted, return { "items": [] }.
 
+        {{$raw_context}}
         Events:
         {{$events}}
         """;
 
     public async Task<Result<IReadOnlyList<ProposedOptimization>>> InvokeAsync(
         string eventsJson,
+        string? rawContext = null,
         CancellationToken cancellationToken = default)
     {
-        var args = new KernelArguments { ["events"] = eventsJson };
+        var args = new KernelArguments
+        {
+            ["events"] = eventsJson,
+            ["raw_context"] = SemanticKernelNetworkAnomalySkill.BuildRawContextBlock(rawContext),
+        };
         Result<List<ProposedOptimization>> result =
             await KernelJsonInvoker.InvokeAsync<List<ProposedOptimization>>(kernel, Prompt, args, cancellationToken);
 
