@@ -46,6 +46,7 @@ using FluentValidation;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
 using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 using SharedKernel;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 
 namespace Modules.Ai.Infrastructure;
 
@@ -71,7 +72,16 @@ public static class DependencyInjection
         // separate raw connection, so type-OID lookup succeeds.
         services.AddSingleton<NpgsqlDataSource>(_ =>
         {
-            var dsb = new NpgsqlDataSourceBuilder(connectionString);
+            // NpgsqlDataSource.Bootstrap fires several pg_type metadata queries to resolve
+            // the `vector` OID. In a Docker/Aspire environment the container can be marked
+            // healthy (port open) before those queries complete within Npgsql's default 15 s
+            // timeout, causing a spurious TimeoutException on first connection.
+            var csb = new NpgsqlConnectionStringBuilder(connectionString)
+            {
+                Timeout = 60,
+                CommandTimeout = 120
+            };
+            var dsb = new NpgsqlDataSourceBuilder(csb.ConnectionString);
             dsb.UseVector();
             return dsb.Build();
         });
@@ -132,6 +142,12 @@ public static class DependencyInjection
                     endpoint: normalizedEndpoint,
                     apiKey: ai.AzureOpenAi.ApiKey);
 
+                kb.Services.AddSingleton<PromptExecutionSettings>(new AzureOpenAIPromptExecutionSettings
+                {
+                    Temperature = 0.7,
+                    ResponseFormat = "json_object"
+                });
+
                 Kernel k = kb.Build();
                 k.Plugins.AddFromObject(sp.GetRequiredService<DiagnosticsSkill>(),    nameof(DiagnosticsSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<OutageSkill>(),         nameof(OutageSkill));
@@ -150,6 +166,7 @@ public static class DependencyInjection
             // deterministically rather than letting the chat model auto-select them.
             services.AddScoped<INetworkAnomalySkill, SemanticKernelNetworkAnomalySkill>();
             services.AddScoped<INetworkOptimizationSkill, SemanticKernelNetworkOptimizationSkill>();
+            services.AddScoped<INetworkEnergySkill, SemanticKernelNetworkEnergySkill>();
             services.AddScoped<INetworkTopologyMappingSkill, SemanticKernelNetworkTopologyMappingSkill>();
             services.AddSingleton<IValidator<AiAnalysisResult>, AiAnalysisResultValidator>();
             services.AddScoped<INetworkBatchAnalyzer, SemanticKernelNetworkBatchAnalyzer>();
@@ -303,6 +320,15 @@ public static class DependencyInjection
         if (string.IsNullOrWhiteSpace(raw) || !Uri.TryCreate(raw.Trim(), UriKind.Absolute, out Uri? uri))
         {
             return raw;
+        }
+
+        if (uri.Scheme is not "https" and not "http")
+        {
+            throw new InvalidOperationException(
+                $"Ai:AzureOpenAi:Endpoint has unsupported scheme '{uri.Scheme}'. " +
+                $"Expected an https:// URL, e.g. https://<resource>.openai.azure.com/. " +
+                $"If you copied an 'azureml://' or other internal URL from Azure ML, " +
+                $"use the 'Keys and Endpoint' page of your Azure OpenAI resource instead.");
         }
 
         UriBuilder rooted = new(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port)

@@ -1,6 +1,6 @@
 using System.Text.Json;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.Extensions.DependencyInjection;
 using SharedKernel;
 
 namespace Modules.Ai.Infrastructure.Pipeline.Skills;
@@ -30,22 +30,14 @@ internal static class KernelJsonInvoker
         KernelArguments arguments,
         CancellationToken cancellationToken)
     {
-        var settings = new OpenAIPromptExecutionSettings
-        {
-            Temperature = 0.1,
-            ResponseFormat = "json_object",
-            MaxTokens = 4000
-        };
-        arguments.ExecutionSettings = new Dictionary<string, PromptExecutionSettings>
-        {
-            [PromptExecutionSettings.DefaultServiceId] = settings
-        };
+        PromptExecutionSettings settings = kernel.Services.GetRequiredService<PromptExecutionSettings>();
+        KernelFunction fn = kernel.CreateFunctionFromPrompt(promptTemplate, executionSettings: settings);
 
         string raw;
         try
         {
             FunctionResult result = await kernel
-                .InvokePromptAsync(promptTemplate, arguments, cancellationToken: cancellationToken)
+                .InvokeAsync(fn, arguments, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
             raw = result.GetValue<string>() ?? string.Empty;
         }
@@ -70,7 +62,7 @@ internal static class KernelJsonInvoker
     {
         try
         {
-            using JsonDocument doc = JsonDocument.Parse(rawJson);
+            using var doc = JsonDocument.Parse(rawJson);
             JsonElement payload = doc.RootElement;
 
             // Unwrap {"items": …} when the inner type is a collection or nullable record.

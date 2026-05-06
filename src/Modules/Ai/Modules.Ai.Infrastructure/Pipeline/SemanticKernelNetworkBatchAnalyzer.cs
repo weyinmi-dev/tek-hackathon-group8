@@ -19,6 +19,7 @@ internal sealed class SemanticKernelNetworkBatchAnalyzer(
     INetworkAnomalySkill anomalySkill,
     INetworkOptimizationSkill optimizationSkill,
     INetworkTopologyMappingSkill topologySkill,
+    INetworkEnergySkill energySkill,
     IValidator<AiAnalysisResult> resultValidator,
     ILogger<SemanticKernelNetworkBatchAnalyzer> logger) : INetworkBatchAnalyzer
 {
@@ -54,7 +55,13 @@ internal sealed class SemanticKernelNetworkBatchAnalyzer(
                 "topology", ingestionRunId);
         if (topology.IsFailure) return Result.Failure<AiAnalysisResult>(topology.Error);
 
-        var combined = new AiAnalysisResult(anomalies.Value, optimizations.Value, topology.Value);
+        Result<string> energy =
+            await InvokeWithRetry(
+                attempt => energySkill.InvokeAsync(eventsJson, cancellationToken),
+                "energy", ingestionRunId);
+        if (energy.IsFailure) return Result.Failure<AiAnalysisResult>(energy.Error);
+
+        var combined = new AiAnalysisResult(anomalies.Value, optimizations.Value, topology.Value, energy.Value);
 
         ValidationResult validation = await resultValidator.ValidateAsync(combined, cancellationToken);
         if (!validation.IsValid)
@@ -70,8 +77,8 @@ internal sealed class SemanticKernelNetworkBatchAnalyzer(
         }
 
         logger.LogInformation(
-            "Run {IngestionRunId}: AI produced {AnomalyCount} anomalies, {OptimizationCount} optimizations, topology={TopologyPresent}",
-            ingestionRunId, anomalies.Value.Count, optimizations.Value.Count, topology.Value is not null);
+            "Run {IngestionRunId}: AI produced {AnomalyCount} anomalies, {OptimizationCount} optimizations, topology={TopologyPresent}, energyObs={EnergyPresent}",
+            ingestionRunId, anomalies.Value.Count, optimizations.Value.Count, topology.Value is not null, !string.IsNullOrWhiteSpace(energy.Value));
 
         return Result.Success(combined);
     }

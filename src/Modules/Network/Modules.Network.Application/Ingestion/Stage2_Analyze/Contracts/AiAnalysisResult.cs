@@ -9,10 +9,13 @@ namespace Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 public sealed record AiAnalysisResult(
     IReadOnlyList<DetectedAnomaly> Anomalies,
     IReadOnlyList<ProposedOptimization> Optimizations,
-    TopologyDelta? Topology)
+    TopologyDelta? Topology,
+    string? EnergyObservationsJson = null)
 {
     public static readonly AiAnalysisResult Empty = new(
         Array.Empty<DetectedAnomaly>(),
         Array.Empty<ProposedOptimization>(),
-        Topology: null);
+        Topology: null,
+        EnergyObservationsJson: null);
 }
+

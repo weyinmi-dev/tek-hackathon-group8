@@ -153,6 +153,7 @@ public sealed class SemanticKernelNetworkBatchAnalyzerTests
             anomalySkill,
             optimizationSkill,
             topologySkill,
+            new StubEnergySkill(_ => Result.Success<string>("{\"observations\":[]}")),
             new AiAnalysisResultValidator(),
             NullLogger<SemanticKernelNetworkBatchAnalyzer>.Instance);
 
@@ -174,6 +175,13 @@ public sealed class SemanticKernelNetworkBatchAnalyzerTests
     {
         private int _calls;
         public Task<Result<TopologyDelta?>> InvokeAsync(string _, CancellationToken __ = default) =>
+            Task.FromResult(respond(++_calls));
+    }
+
+    private sealed class StubEnergySkill(Func<int, Result<string>> respond) : INetworkEnergySkill
+    {
+        private int _calls;
+        public Task<Result<string>> InvokeAsync(string _, CancellationToken __ = default) =>
             Task.FromResult(respond(++_calls));
     }
 }
