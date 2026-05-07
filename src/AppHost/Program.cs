@@ -1,4 +1,4 @@
-// TelcoPilot Aspire AppHost — local development orchestration.
+// TelcoPilot Aspire AppHost — local development orchestration. 
 //
 // In local dev:  dotnet run --project src/AppHost   (boots Postgres, Redis, Web.Api, Next.js frontend)
 // In production: docker-compose up                  (nginx + frontend + backend + postgres + redis)

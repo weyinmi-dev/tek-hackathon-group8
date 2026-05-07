@@ -24,6 +24,19 @@ internal sealed class AlertRepository(AlertsDbContext db) : IAlertRepository
     public Task<Alert?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
         db.Alerts.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
 
+    public Task<Alert?> GetActiveByFingerprintAsync(string anomalyFingerprint, CancellationToken cancellationToken = default) =>
+        db.Alerts.FirstOrDefaultAsync(
+            a => a.AnomalyFingerprint == anomalyFingerprint && a.Status != AlertStatus.Resolved,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<Alert>> ListActiveFingerprintedAsync(CancellationToken cancellationToken = default) =>
+        await db.Alerts.AsNoTracking()
+            .Where(a => a.AnomalyFingerprint != null && a.Status != AlertStatus.Resolved)
+            .ToListAsync(cancellationToken);
+
+    public async Task AddAsync(Alert alert, CancellationToken cancellationToken = default) =>
+        await db.Alerts.AddAsync(alert, cancellationToken);
+
     public async Task AddRangeAsync(IEnumerable<Alert> alerts, CancellationToken cancellationToken = default) =>
         await db.Alerts.AddRangeAsync(alerts, cancellationToken);
 

@@ -20,7 +20,7 @@ public sealed class KnowledgeSkill(IRagRetriever retriever)
     [Description("Search the indexed telco knowledge base (past incident reports, outage summaries, engineering SOPs, tower performance trends) for context relevant to the user's question. Use this for any 'why is X slow', 'has this happened before', or 'what's the runbook for Y' query.")]
     public async Task<string> SearchAsync(
         [Description("The natural-language search query — e.g. 'fiber cut Lekki', 'genset failover SOP', 'Festac evening congestion'.")] string query,
-        [Description("Optional category filter: 'incident_report', 'outage_summary', 'network_diagnostic', 'engineering_sop', 'tower_performance', 'alert_history'. Omit or pass empty for all categories.")] string category = "",
+        [Description("Optional category filter: 'incident_report', 'outage_summary', 'network_diagnostic', 'engineering_sop', 'tower_performance', 'alert_history', 'energy_site_snapshot', 'energy_anomaly'. Omit or pass empty for all categories.")] string category = "",
         [Description("Optional region filter, e.g. 'Lekki', 'Lagos West', 'Ikeja'. Omit for all regions.")] string region = "",
         CancellationToken cancellationToken = default)
     {

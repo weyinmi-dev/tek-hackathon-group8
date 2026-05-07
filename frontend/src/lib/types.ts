@@ -197,9 +197,10 @@ export type DocumentSource =
   | "GoogleDrive"
   | "OneDrive"
   | "SharePoint"
-  | "AzureBlob";
+  | "AzureBlob"
+  | "WebLink";
 
-export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed";
+export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed" | "Rejected";
 
 export type DocumentListItem = {
   id: string;
@@ -216,6 +217,7 @@ export type DocumentListItem = {
   uploadedAtUtc: string;
   indexedAtUtc: string | null;
   lastIndexError: string | null;
+  rejectionReason: string | null;
   externalReference: string | null;
 };
 
@@ -320,4 +322,82 @@ export type EnergyRecommendation = {
   detail: string;
   tone: "accent" | "warn" | "info";
   estimatedDailySavingsNgn: number;
+};
+
+// ── Energy analytics ──────────────────────────────────────────────────────────
+// Mirrors EnergyMetricsResponse from /api/energy/metrics. Powers the energy panel
+// on the Operations Dashboard (regional health, mix, anomaly type breakdown,
+// OPEX trend, top diesel burners).
+
+export type EnergyRegionHealthDto = {
+  name: string;
+  sites: number;
+  critical: number;
+  degraded: number;
+  ok: number;
+  avgUptimePct: number;
+  avgBattPct: number;
+  tone: "ok" | "warn" | "crit";
+};
+
+export type EnergyMixSliceDto = { source: string; pct: number };
+
+export type EnergyAnomalyTypeBreakdownDto = { kind: string; count: number };
+
+export type TopDieselBurnerDto = {
+  siteCode: string;
+  name: string;
+  region: string;
+  dailyDieselLitres: number;
+  dailyCostNgn: number;
+};
+
+export type EnergyMetricsResponse = {
+  regions: EnergyRegionHealthDto[];
+  energyMix: EnergyMixSliceDto[];
+  anomalyTypes: EnergyAnomalyTypeBreakdownDto[];
+  opexTrend: number[];
+  topBurners: TopDieselBurnerDto[];
+  openAnomalies: number;
+  criticalSites: number;
+  fleetUptimePct: number;
+  avgBatteryPct: number;
+  dailyOpexNgn: number;
+};
+
+// ── Network ingestion ────────────────────────────────────────────────────────
+// Mirrors Modules.Network.Application.Ingestion.Pipeline.IngestionRunSummary
+// returned by POST /api/network/ingest.
+
+export type IngestionStatus =
+  | "Pending"
+  | "Parsing"
+  | "Analyzing"
+  | "Deciding"
+  | "Persisting"
+  | "Projecting"
+  | "Completed"
+  | "Failed";
+
+export type StageTiming = {
+  stage: IngestionStatus;
+  startedAt: string;
+  endedAt: string;
+  succeeded: boolean;
+  failureReason: string | null;
+};
+
+export type IngestionRunSummary = {
+  ingestionRunId: string;
+  contentHash: string;
+  finalStatus: IngestionStatus;
+  eventsParsed: number;
+  anomaliesDetected: number;
+  alertsCreated: number;
+  alertsUpdated: number;
+  optimizationsCreated: number;
+  topologyChanged: boolean;
+  deduplicatedFromPriorRun: boolean;
+  stageTimings: StageTiming[];
+  failureReason: string | null;
 };

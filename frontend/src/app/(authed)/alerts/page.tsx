@@ -19,7 +19,13 @@ const AlertsPage = observer(function AlertsPage() {
   // Re-fetch whenever the persisted filter changes. The store decides which alert
   // to keep selected (preserves prior selection when still present, falls back to
   // the first one) so the detail panel never goes blank between filter flips.
-  useEffect(() => { void store.load(); }, [store, store.filter]);
+  // Mirrors the anomalies page: a 30s tick keeps acked-status changes from other
+  // operators visible without forcing a manual reload.
+  useEffect(() => {
+    void store.load();
+    const id = setInterval(() => void store.load(), 30_000);
+    return () => clearInterval(id);
+  }, [store, store.filter]);
 
   async function assign(a: Alert): Promise<void> {
     const team = window.prompt(`Assign ${a.id} to which NOC team?`, a.assignedTeam ?? "field-team-3")?.trim();
@@ -51,44 +57,64 @@ const AlertsPage = observer(function AlertsPage() {
         title="Smart Alerts"
         sub={`${store.alerts.filter((a) => a.status === "active").length} active · AI-summarized · pattern detection enabled`}
         right={
-          <div
-            style={{
-              display: "flex",
-              gap: 6,
-              padding: 3,
-              background: "var(--bg-1)",
-              border: "1px solid var(--line)",
-              borderRadius: 7,
-            }}
-          >
-            {(["all", "critical", "warn", "info"] as const).map((k) => (
-              <button
-                key={k}
-                onClick={() => store.setFilter(k)}
-                style={{
-                  appearance: "none",
-                  border: 0,
-                  padding: "5px 12px",
-                  borderRadius: 5,
-                  fontSize: 11,
-                  fontWeight: 500,
-                  background: store.filter === k ? "var(--bg-3)" : "transparent",
-                  color: store.filter === k ? "var(--ink)" : "var(--ink-3)",
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                {k.charAt(0).toUpperCase() + k.slice(1)}
-                <span
-                  className="mono"
-                  style={{ fontSize: 9.5, color: "var(--ink-3)" }}
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 6,
+                padding: 3,
+                background: "var(--bg-1)",
+                border: "1px solid var(--line)",
+                borderRadius: 7,
+              }}
+            >
+              {(["all", "critical", "warn", "info"] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => store.setFilter(k)}
+                  style={{
+                    appearance: "none",
+                    border: 0,
+                    padding: "5px 12px",
+                    borderRadius: 5,
+                    fontSize: 11,
+                    fontWeight: 500,
+                    background: store.filter === k ? "var(--bg-3)" : "transparent",
+                    color: store.filter === k ? "var(--ink)" : "var(--ink-3)",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
                 >
-                  {store.counts[k]}
-                </span>
-              </button>
-            ))}
+                  {k.charAt(0).toUpperCase() + k.slice(1)}
+                  <span
+                    className="mono"
+                    style={{ fontSize: 9.5, color: "var(--ink-3)" }}
+                  >
+                    {store.counts[k]}
+                  </span>
+                </button>
+              ))}
+            </div>
+            <Pill tone="info">
+              {store.alerts.filter((a) => a.status === "acknowledged").length} ACKED
+            </Pill>
+            <button
+              onClick={() => store.toggleShowAcknowledged()}
+              style={{
+                appearance: "none",
+                border: "1px solid var(--line)",
+                borderRadius: 5,
+                padding: "5px 10px",
+                fontSize: 11,
+                cursor: "pointer",
+                background: store.showAcknowledged ? "var(--bg-3)" : "transparent",
+                color: store.showAcknowledged ? "var(--ink)" : "var(--ink-3)",
+              }}
+            >
+              {store.showAcknowledged ? "Hide acked" : "Show acked"}
+            </button>
           </div>
         }
       />
@@ -137,12 +163,12 @@ const AlertsPage = observer(function AlertsPage() {
               ⌁ Loading alerts…
             </div>
           )}
-          {!store.error && !store.loading && store.alerts.length === 0 && (
+          {!store.error && !store.loading && store.visible.length === 0 && (
             <div className="mono" style={{ color: "var(--ink-3)", padding: 14, fontSize: 11.5 }}>
-              ⌁ No alerts match the current filter ({store.filter}).
+              ⌁ No {store.showAcknowledged ? "" : "open "}alerts match the current filter ({store.filter}).
             </div>
           )}
-          {store.alerts.map((a) => (
+          {store.visible.map((a) => (
             <button
               key={a.id}
               onClick={() => store.setSelected(a.id)}
@@ -158,6 +184,7 @@ const AlertsPage = observer(function AlertsPage() {
                 padding: 14,
                 position: "relative",
                 borderLeft: `3px solid ${a.sev === "critical" ? "var(--crit)" : a.sev === "warn" ? "var(--warn)" : "var(--info)"}`,
+                opacity: a.status === "acknowledged" ? 0.55 : 1,
               }}
             >
               <div
@@ -183,6 +210,7 @@ const AlertsPage = observer(function AlertsPage() {
                   </Pill>
                   <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>{a.id}</span>
                   <span className="mono" style={{ fontSize: 10, color: "var(--ink-3)" }}>· {a.region}</span>
+                  {a.status === "acknowledged" && <Pill tone="ok">ACKED</Pill>}
                   {/* OSM-derived geo context: region type + accessibility + nearest fuel station.
                       Compact (region pill + fuel) keeps the list row dense; the detail panel
                       shows the full breakdown including the accessibility score. */}
@@ -301,17 +329,15 @@ const AlertsPage = observer(function AlertsPage() {
             {user?.role !== "viewer" && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  <Btn
-                    primary
-                    onClick={() => store.ack(sel.id)}
-                    disabled={store.acking === sel.id || sel.status === "acknowledged"}
-                  >
-                    {store.acking === sel.id
-                      ? "Acknowledging…"
-                      : sel.status === "acknowledged"
-                        ? "Acknowledged"
-                        : "Acknowledge"}
-                  </Btn>
+                  {sel.status !== "acknowledged" && (
+                    <Btn
+                      primary
+                      onClick={() => store.ack(sel.id)}
+                      disabled={store.acking === sel.id}
+                    >
+                      {store.acking === sel.id ? "Acknowledging…" : "Acknowledge"}
+                    </Btn>
+                  )}
                   {isManager(user?.role) && (
                     <Btn onClick={() => assign(sel)}>
                       {sel.assignedTeam ? "Reassign" : "Assign"}

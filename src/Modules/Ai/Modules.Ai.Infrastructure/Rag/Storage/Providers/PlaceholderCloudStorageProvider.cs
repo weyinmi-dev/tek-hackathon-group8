@@ -34,11 +34,6 @@ internal sealed class GoogleDriveDocumentStorageProvider : PlaceholderCloudStora
     public override DocumentSource Source => DocumentSource.GoogleDrive;
 }
 
-internal sealed class OneDriveDocumentStorageProvider : PlaceholderCloudStorageProvider
-{
-    public override DocumentSource Source => DocumentSource.OneDrive;
-}
-
 internal sealed class SharePointDocumentStorageProvider : PlaceholderCloudStorageProvider
 {
     public override DocumentSource Source => DocumentSource.SharePoint;

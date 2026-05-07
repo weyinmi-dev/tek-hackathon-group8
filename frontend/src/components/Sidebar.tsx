@@ -23,7 +23,7 @@ const NAV: NavItem[] = [
   { id: "/copilot",   label: "Copilot",        icon: "✦", section: "OPS" },
   { id: "/map",       label: "Network Map",    icon: "◎", section: "OPS" },
   { id: "/alerts",    label: "Alerts",         icon: "△", section: "OPS" },
-  { id: "/documents", label: "Knowledge",      icon: "❒", section: "OPS" },
+  { id: "/documents", label: "Knowledge & Logs", icon: "❒", section: "OPS" },
   { id: "/energy",    label: "Energy Sites",   icon: "⚡", section: "ENERGY" },
   { id: "/anomalies", label: "Anomalies",      icon: "⚠", section: "ENERGY" },
   { id: "/optimize",  label: "Optimization",   icon: "∿", section: "ENERGY" },
@@ -50,15 +50,16 @@ export const Sidebar = observer(function Sidebar() {
   const anomaliesStore = useAnomaliesStore();
 
   useEffect(() => {
-    // The sidebar only needs the alert count for its badge — hit the lightweight
-    // /alerts/counts endpoint instead of pulling the full alerts payload (which
-    // includes OSM geo enrichment per tower) at app start.
-    void alertsStore.loadCounts();
+    // Mirrors the anomalies pattern: load the full list so the sidebar badge
+    // can react to the show-acknowledged toggle (visible.length) instead of
+    // showing a static DB total. load() also refreshes counts in the background
+    // for any other consumer of alertsStore.counts.
+    void alertsStore.load();
     void anomaliesStore.load();
   }, [alertsStore, anomaliesStore]);
 
   function getBadge(id: string): number | null {
-    if (id === "/alerts")    return alertsStore.counts.all;
+    if (id === "/alerts")    return alertsStore.visible.length;
     if (id === "/anomalies") return anomaliesStore.visible.length;
     return null;
   }

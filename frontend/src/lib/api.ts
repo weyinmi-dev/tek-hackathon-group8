@@ -27,6 +27,8 @@ import type {
   DieselTracePoint,
   OptimizationProjection,
   EnergyRecommendation,
+  EnergyMetricsResponse,
+  IngestionRunSummary,
 } from "./types";
 
 const API_BASE = "/api";
@@ -241,7 +243,11 @@ export const api = {
   audit: (take = 50) => request<AuditEntry[]>(`/metrics/audit?take=${take}`),
 
   // Documents
-  documents: () => request<DocumentListItem[]>("/documents"),
+  documents: (page: number = 1, pageSize: number = 10, search?: string) => {
+    const q = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() });
+    if (search) q.append("search", search);
+    return request<{ items: DocumentListItem[]; totalCount: number }>(`/documents?${q.toString()}`);
+  },
   documentProviders: () => request<DocumentProvider[]>("/documents/providers"),
   uploadDocument: (form: FormData) =>
     request<DocumentListItem>("/documents/upload", {
@@ -270,6 +276,44 @@ export const api = {
     }),
   deleteDocument: (id: string) =>
     request<void>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  syncDocuments: () =>
+    request<void>("/documents/sync", { method: "POST" }),
+
+  // Network ingestion — runs a log file (csv/json/xlsx/txt) through the 5-stage
+  // AI pipeline (Parse → Analyze → Decide → Persist → Project). Returns the run
+  // summary the caller can render inline. Re-uploading the same bytes returns
+  // the prior summary with `deduplicatedFromPriorRun: true`.
+  network: {
+    ingest: (form: FormData) =>
+      request<IngestionRunSummary>("/network/ingest", {
+        method: "POST",
+        body: form,
+      }),
+    // Convenience wrapper: fetches bytes from a URL (e.g. a OneDrive direct-
+    // download link) in the browser, then forwards them as a multipart upload.
+    // The browser/extension must be allowed to read the URL (CORS / signed
+    // share-link). If the fetch fails, the caller should surface the error and
+    // suggest downloading then drag-dropping the file instead.
+    ingestFromUrl: async (url: string, fileName: string) => {
+      const res = await fetch(url, { credentials: "omit" });
+      if (!res.ok) {
+        throw new Error(
+          `Could not fetch from URL (${res.status} ${res.statusText}). ` +
+          `If this is a OneDrive share link, make sure it allows direct download.`,
+        );
+      }
+      const blob = await res.blob();
+      const fd = new FormData();
+      fd.append(
+        "file",
+        new File([blob], fileName, { type: blob.type || "application/octet-stream" }),
+      );
+      return request<IngestionRunSummary>("/network/ingest", {
+        method: "POST",
+        body: fd,
+      });
+    },
+  },
 
   // MCP
   mcpPlugins: () => request<McpPlugin[]>("/mcp/plugins"),
@@ -288,6 +332,7 @@ export const api = {
   energy: {
     sites: () => request<{ sites: EnergySiteDto[] }>("/energy/sites"),
     kpis: () => request<{ kpis: EnergyKpiDto[] }>("/energy/kpis"),
+    metrics: () => request<EnergyMetricsResponse>("/energy/metrics"),
     anomalies: (take = 50) =>
       request<{ anomalies: EnergyAnomalyDto[] }>(
         `/energy/anomalies?take=${take}`,

@@ -11,4 +11,5 @@ public static class Tags
     public const string Mcp = "Mcp";
     public const string Energy = "Energy";
     public const string Geo = "Geo";
+    public const string NetworkIngestion = "NetworkIngestion";
 }

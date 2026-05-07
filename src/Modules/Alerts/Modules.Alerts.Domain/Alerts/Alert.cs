@@ -46,6 +46,14 @@ public sealed class Alert : Entity
     public DateTime? DispatchedAtUtc { get; private set; }
     public string? DispatchedBy { get; private set; }
 
+    // ── Stage-4 dedup fields ──────────────────────────────────────────────────
+    // Populated only by alerts created from the AI ingestion pipeline. Older alerts
+    // (raised manually or pre-PR-5) keep these as NULL and don't participate in
+    // fingerprint-based deduplication, so existing behaviour is preserved.
+    public string? AnomalyFingerprint { get; private set; }
+    public int? OccurrenceCount { get; private set; }
+    public DateTime? LastSeenAtUtc { get; private set; }
+
     public static Alert Raise(
         string code, AlertSeverity severity, string title, string region, string towerCode,
         string aiCause, int subscribersAffected, double confidence, AlertStatus status, DateTime raisedAtUtc)
@@ -53,6 +61,75 @@ public sealed class Alert : Entity
         var a = new Alert(Guid.NewGuid(), code, severity, title, region, towerCode, aiCause, subscribersAffected, confidence, status, raisedAtUtc);
         a.Raise(new AlertRaisedDomainEvent(a.Id, code, severity.ToWire(), region, subscribersAffected));
         return a;
+    }
+
+    /// <summary>
+    /// Pipeline-created alert with a deterministic fingerprint. The orchestrator chooses
+    /// CREATE vs UPDATE upstream (in the decision engine); this factory is only called
+    /// when no live alert with the same fingerprint exists.
+    /// </summary>
+    public static Alert RaiseFromAnomaly(
+        string code, AlertSeverity severity, string title, string region, string towerCode,
+        string aiCause, int subscribersAffected, double confidence,
+        string anomalyFingerprint, DateTime detectedAtUtc)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(anomalyFingerprint);
+
+        var a = new Alert(
+            Guid.NewGuid(), code, severity, title, region, towerCode,
+            aiCause, subscribersAffected, confidence, AlertStatus.Active, detectedAtUtc);
+        a.AnomalyFingerprint = anomalyFingerprint;
+        a.OccurrenceCount = 1;
+        a.LastSeenAtUtc = detectedAtUtc;
+        a.Raise(new AlertRaisedDomainEvent(a.Id, code, severity.ToWire(), region, subscribersAffected));
+        return a;
+    }
+
+    /// <summary>
+    /// Records a recurrence of the same anomaly: bumps the occurrence counter, refreshes
+    /// the last-seen timestamp, and escalates severity if the new evidence is stronger.
+    /// The alert's lifecycle status (Acknowledged, Investigating, etc.) is intentionally
+    /// not touched — operators have already engaged with the alert and shouldn't lose context.
+    /// </summary>
+    public Result RegisterRecurrence(
+        AlertSeverity newSeverity,
+        double newConfidence,
+        string? updatedAiCause,
+        DateTime detectedAtUtc)
+    {
+        if (AnomalyFingerprint is null)
+        {
+            return Result.Failure(AlertErrors.NotFingerprintTracked);
+        }
+
+        if (Status == AlertStatus.Resolved)
+        {
+            // Re-emerging anomalies on resolved alerts must produce a NEW alert; the
+            // decision engine already enforces this, but defend the invariant here too.
+            return Result.Failure(AlertErrors.AlreadyResolved);
+        }
+
+        OccurrenceCount = (OccurrenceCount ?? 0) + 1;
+        LastSeenAtUtc = detectedAtUtc;
+
+        if (newSeverity > Severity)
+        {
+            Severity = newSeverity;
+        }
+
+        // Confidence reflects the strongest signal seen so far.
+        if (newConfidence > Confidence)
+        {
+            Confidence = newConfidence;
+        }
+
+        if (!string.IsNullOrWhiteSpace(updatedAiCause))
+        {
+            AiCause = updatedAiCause;
+        }
+
+        Raise(new AlertRecurredDomainEvent(Id, Code, OccurrenceCount.Value, Severity.ToWire()));
+        return Result.Success();
     }
 
     public Result Acknowledge(string actor)
@@ -129,6 +206,7 @@ public sealed record AlertRaisedDomainEvent(Guid AlertId, string Code, string Se
 public sealed record AlertAcknowledgedDomainEvent(Guid AlertId, string Code, string Actor) : IDomainEvent;
 public sealed record AlertAssignedDomainEvent(Guid AlertId, string Code, string Team, string Actor) : IDomainEvent;
 public sealed record AlertDispatchedDomainEvent(Guid AlertId, string Code, string Target, string Actor) : IDomainEvent;
+public sealed record AlertRecurredDomainEvent(Guid AlertId, string Code, int OccurrenceCount, string Severity) : IDomainEvent;
 
 public static class AlertErrors
 {
@@ -137,6 +215,9 @@ public static class AlertErrors
     public static readonly Error AlreadyResolved = Error.Problem("Alert.AlreadyResolved", "Alert is already resolved.");
     public static readonly Error InvalidAssignment = Error.Problem("Alert.InvalidAssignment", "Team name is required.");
     public static readonly Error InvalidDispatch = Error.Problem("Alert.InvalidDispatch", "Dispatch target is required.");
+    public static readonly Error NotFingerprintTracked = Error.Problem(
+        "Alert.NotFingerprintTracked",
+        "Alert was not created from the AI ingestion pipeline; recurrences cannot be applied to it.");
 }
 
 public interface IAlertRepository
@@ -146,6 +227,20 @@ public interface IAlertRepository
     Task<IReadOnlyList<Alert>> ListActiveAsync(CancellationToken cancellationToken = default);
     Task<Alert?> GetByCodeAsync(string code, CancellationToken cancellationToken = default);
     Task<Alert?> GetByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Tracking lookup for the dedup handler — returns the fingerprint-bearing alert if one
+    /// exists in any non-resolved status. Returns null if no live alert matches.
+    /// </summary>
+    Task<Alert?> GetActiveByFingerprintAsync(string anomalyFingerprint, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Read port for <c>IAlertSnapshotProvider</c>: every active fingerprinted alert,
+    /// projected to a small snapshot the decision engine can consume.
+    /// </summary>
+    Task<IReadOnlyList<Alert>> ListActiveFingerprintedAsync(CancellationToken cancellationToken = default);
+
+    Task AddAsync(Alert alert, CancellationToken cancellationToken = default);
     Task AddRangeAsync(IEnumerable<Alert> alerts, CancellationToken cancellationToken = default);
     Task<int> CountAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyDictionary<AlertSeverity, int>> CountBySeverityAsync(CancellationToken cancellationToken = default);

@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.SemanticKernel;
 using Npgsql;
+using Application.Abstractions.Storage;
 using Modules.Ai.Application.Mcp.Clients;
 using Modules.Ai.Application.Mcp.Contracts;
 using Modules.Ai.Application.Mcp.Registry;
@@ -37,9 +38,16 @@ using Modules.Ai.Infrastructure.Rag.Storage;
 using Modules.Ai.Infrastructure.Rag.Storage.Providers;
 using Modules.Ai.Infrastructure.Rag.Stores;
 using Modules.Ai.Infrastructure.Repositories;
+using Modules.Ai.Infrastructure.Pipeline;
+using Modules.Ai.Infrastructure.Pipeline.Skills;
+using Modules.Ai.Infrastructure.Pipeline.Validators;
 using Modules.Ai.Infrastructure.SemanticKernel;
 using Modules.Ai.Infrastructure.SemanticKernel.Skills;
+using FluentValidation;
+using Modules.Network.Application.Ingestion.Stage2_Analyze;
+using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 using SharedKernel;
+using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 
 namespace Modules.Ai.Infrastructure;
 
@@ -65,7 +73,16 @@ public static class DependencyInjection
         // separate raw connection, so type-OID lookup succeeds.
         services.AddSingleton<NpgsqlDataSource>(_ =>
         {
-            var dsb = new NpgsqlDataSourceBuilder(connectionString);
+            // NpgsqlDataSource.Bootstrap fires several pg_type metadata queries to resolve
+            // the `vector` OID. In a Docker/Aspire environment the container can be marked
+            // healthy (port open) before those queries complete within Npgsql's default 15 s
+            // timeout, causing a spurious TimeoutException on first connection.
+            var csb = new NpgsqlConnectionStringBuilder(connectionString)
+            {
+                Timeout = 60,
+                CommandTimeout = 120
+            };
+            var dsb = new NpgsqlDataSourceBuilder(csb.ConnectionString);
             dsb.UseVector();
             return dsb.Build();
         });
@@ -88,11 +105,6 @@ public static class DependencyInjection
         // sub-options) can consume it via constructor injection rather than re-binding the section.
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
 
-        AddRagPipeline(services, rag, configuration);
-        AddDocumentPipeline(services, configuration);
-        AddOsmLayer(services, configuration);
-        AddMcpPluginLayer(services);
-
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
 
         // Provider selection. AzureOpenAi requires endpoint + key + deployment.
@@ -101,6 +113,11 @@ public static class DependencyInjection
             string.Equals(ai.Provider, "AzureOpenAi", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(ai.AzureOpenAi.Endpoint) &&
             !string.IsNullOrWhiteSpace(ai.AzureOpenAi.ApiKey);
+
+        AddRagPipeline(services, rag, configuration);
+        AddDocumentPipeline(services, configuration, useAzure);
+        AddOsmLayer(services, configuration);
+        AddMcpPluginLayer(services);
 
         if (useAzure)
         {
@@ -126,6 +143,14 @@ public static class DependencyInjection
                     endpoint: normalizedEndpoint,
                     apiKey: ai.AzureOpenAi.ApiKey);
 
+                kb.Services.AddSingleton<PromptExecutionSettings>(new AzureOpenAIPromptExecutionSettings
+                {
+                    Temperature = 0.7,
+                    ResponseFormat = "json_object"
+                });
+
+                sp.GetRequiredService<FileMcpClient>().AddToKernelBuilder(kb);
+
                 Kernel k = kb.Build();
                 k.Plugins.AddFromObject(sp.GetRequiredService<DiagnosticsSkill>(),    nameof(DiagnosticsSkill));
                 k.Plugins.AddFromObject(sp.GetRequiredService<OutageSkill>(),         nameof(OutageSkill));
@@ -138,10 +163,24 @@ public static class DependencyInjection
             });
             services.AddScoped(sp => sp.GetRequiredService<Kernel>().GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
             services.AddScoped<ICopilotOrchestrator, SemanticKernelOrchestrator>();
+
+            // Stage 2 — three SK skills + the wrapper that composes/validates/retries them.
+            // Skills are NOT added to Kernel.Plugins because the analyzer invokes them
+            // deterministically rather than letting the chat model auto-select them.
+            services.AddScoped<INetworkAnomalySkill, SemanticKernelNetworkAnomalySkill>();
+            services.AddScoped<INetworkOptimizationSkill, SemanticKernelNetworkOptimizationSkill>();
+            services.AddScoped<INetworkEnergySkill, SemanticKernelNetworkEnergySkill>();
+            services.AddScoped<INetworkTopologyMappingSkill, SemanticKernelNetworkTopologyMappingSkill>();
+            services.AddSingleton<IValidator<AiAnalysisResult>, AiAnalysisResultValidator>();
+            services.AddScoped<INetworkBatchAnalyzer, SemanticKernelNetworkBatchAnalyzer>();
         }
         else
         {
             services.AddScoped<ICopilotOrchestrator, MockCopilotOrchestrator>();
+
+            // Heuristic Stage-2 fallback: lets the pipeline run end-to-end without an Azure
+            // OpenAI key. Required by the demo + by deterministic integration tests.
+            services.AddSingleton<INetworkBatchAnalyzer, HeuristicNetworkBatchAnalyzer>();
         }
 
         return services;
@@ -153,12 +192,15 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeStore, PgVectorKnowledgeStore>();
         services.AddScoped<IRagIndexer, RagIndexer>();
         services.AddScoped<IRagRetriever, RagRetriever>();
+        services.AddScoped<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentSeeder>();
 
         // Energy → knowledge bridge: a scoped indexer service + a hosted background
         // worker that re-syncs Site/Anomaly state every 5 minutes so the Copilot can
         // ground "why did Surulere consume more diesel yesterday" answers in fresh data.
         services.AddScoped<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexer>();
         services.AddHostedService<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexerService>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentSeederService>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentWatcherService>();
 
         AiOptions ai = configuration.GetSection(AiOptions.SectionName).Get<AiOptions>() ?? new AiOptions();
         bool useAzureEmbeddings =
@@ -203,6 +245,14 @@ public static class DependencyInjection
 
         services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
         services.AddScoped<IMcpInvoker, McpInvoker>();
+
+        // FileMcpClient starts the @modelcontextprotocol/server-filesystem subprocess ONCE at
+        // startup and caches the resulting KernelFunction list. The hosted service triggers
+        // initialization; the kernel factory reads the cached list synchronously (no blocking,
+        // no per-request process spawning). If npx or the package is unavailable, the FS plugin
+        // is simply absent and nothing else breaks.
+        services.AddSingleton<FileMcpClient>();
+        services.AddHostedService<FileMcpClientInitializer>();
     }
 
     /// <summary>
@@ -252,10 +302,15 @@ public static class DependencyInjection
         services.AddHostedService<GeoCacheWarmer>();
     }
 
-    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration)
+    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration, bool useAzure)
     {
         DocumentsOptions docs = configuration.GetSection(DocumentsOptions.SectionName).Get<DocumentsOptions>() ?? new DocumentsOptions();
         services.AddSingleton(docs);
+
+        // FileStagingService persists uploaded bytes under .telcopilot/uploads/ so they are
+        // accessible to the @modelcontextprotocol/server-filesystem MCP server (FS plugin)
+        // for copilot queries and to Stage-2 for raw-content enrichment of SK prompts.
+        services.AddSingleton<IFileStagingService, FileStagingService>();
 
         // Local-disk provider — fully wired and the default destination for /documents uploads.
         services.AddSingleton<IDocumentStorageProvider, LocalDocumentStorageProvider>();
@@ -266,9 +321,13 @@ public static class DependencyInjection
         // operator is ready to enable that source — no changes required to the ingestion
         // pipeline or the document handlers.
         services.AddSingleton<IDocumentStorageProvider, GoogleDriveDocumentStorageProvider>();
-        services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
+        // services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, SharePointDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, AzureBlobDocumentStorageProvider>();
+        services.AddSingleton<IDocumentStorageProvider, WebLinkDocumentStorageProvider>();
+
+        // Add a standard HttpClient for the cloud/web providers to use
+        services.AddHttpClient<WebLinkDocumentStorageProvider>();
 
         services.AddSingleton<IDocumentStorageRegistry, DocumentStorageRegistry>();
         // DefaultDocumentTextExtractor dispatches on content type (PDF / text / unsupported).
@@ -276,7 +335,16 @@ public static class DependencyInjection
         // class comment for the full story. Singleton is fine; it's stateless apart from
         // the injected logger.
         services.AddSingleton<IDocumentTextExtractor, DefaultDocumentTextExtractor>();
+        if (useAzure)
+        {
+            services.AddScoped<IDocumentValidator, AiDocumentValidator>();
+        }
+        else
+        {
+            services.AddScoped<IDocumentValidator, MockDocumentValidator>();
+        }
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+        services.AddScoped<IDocumentSyncService, DocumentSyncService>();
     }
 
     internal static string NormalizeAzureOpenAiEndpoint(string raw)
@@ -284,6 +352,15 @@ public static class DependencyInjection
         if (string.IsNullOrWhiteSpace(raw) || !Uri.TryCreate(raw.Trim(), UriKind.Absolute, out Uri? uri))
         {
             return raw;
+        }
+
+        if (uri.Scheme is not "https" and not "http")
+        {
+            throw new InvalidOperationException(
+                $"Ai:AzureOpenAi:Endpoint has unsupported scheme '{uri.Scheme}'. " +
+                $"Expected an https:// URL, e.g. https://<resource>.openai.azure.com/. " +
+                $"If you copied an 'azureml://' or other internal URL from Azure ML, " +
+                $"use the 'Keys and Endpoint' page of your Azure OpenAI resource instead.");
         }
 
         UriBuilder rooted = new(uri.Scheme, uri.Host, uri.IsDefaultPort ? -1 : uri.Port)
