@@ -28,7 +28,9 @@ const AnomaliesPage = observer(function AnomaliesPage() {
 
   useEffect(() => {
     void store.load();
-    const id = setInterval(() => void store.load(), 30_000);
+    const id = setInterval(() => {
+      if (!document.hidden) void store.load();
+    }, 30_000);
     return () => clearInterval(id);
   }, [store]);
 

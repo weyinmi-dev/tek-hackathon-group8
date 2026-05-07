@@ -43,6 +43,7 @@ export class AlertsStore {
 
   private _disposePersist: (() => void) | null = null;
   private _toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private _loadPromise: Promise<void> | null = null;
 
   constructor() {
     makeAutoObservable(this, {}, { autoBind: true });
@@ -90,28 +91,24 @@ export class AlertsStore {
   }
 
   async load(): Promise<void> {
-    this.loading = true;
-    this.error = null;
+    if (this._loadPromise) return this._loadPromise;
+    this._loadPromise = this._doLoad().finally(() => {
+      this._loadPromise = null;
+    });
+    return this._loadPromise;
+  }
+
+  private async _doLoad(): Promise<void> {
+    runInAction(() => { this.loading = true; this.error = null; });
     try {
       const r = await api.alerts({ severity: this.filter === "all" ? undefined : this.filter });
       runInAction(() => {
         this.alerts = r;
-        // Keep a valid selection — prefer the previously-selected alert if it
-        // still exists in the new list, otherwise default to the first one so
-        // the detail panel never goes blank on filter change. Default to the
-        // first *visible* alert so the panel doesn't open onto a row hidden
-        // by the show-acknowledged toggle.
         const stillThere = this.selectedId && r.find(a => a.id === this.selectedId);
         if (!stillThere) this.selectedId = this.visible[0]?.id ?? null;
       });
-      // Refresh counts in the background — keeps the sidebar badge live after
-      // ack/assign/dispatch without forcing the alerts list to be re-fetched
-      // for callers that only need totals.
       void this.loadCounts();
     } catch (e) {
-      // Surface the failure: console for DevTools + store.error for an in-page
-      // banner. Without this both an empty fleet and a 500 response render as
-      // an identical blank page, which is undiagnosable.
       console.warn("[AlertsStore] load failed:", e);
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
     } finally {
