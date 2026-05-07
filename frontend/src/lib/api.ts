@@ -243,7 +243,11 @@ export const api = {
   audit: (take = 50) => request<AuditEntry[]>(`/metrics/audit?take=${take}`),
 
   // Documents
-  documents: () => request<DocumentListItem[]>("/documents"),
+  documents: (page: number = 1, pageSize: number = 10, search?: string) => {
+    const q = new URLSearchParams({ page: page.toString(), pageSize: pageSize.toString() });
+    if (search) q.append("search", search);
+    return request<{ items: DocumentListItem[]; totalCount: number }>(`/documents?${q.toString()}`);
+  },
   documentProviders: () => request<DocumentProvider[]>("/documents/providers"),
   uploadDocument: (form: FormData) =>
     request<DocumentListItem>("/documents/upload", {
@@ -272,6 +276,8 @@ export const api = {
     }),
   deleteDocument: (id: string) =>
     request<void>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  syncDocuments: () =>
+    request<void>("/documents/sync", { method: "POST" }),
 
   // Network ingestion — runs a log file (csv/json/xlsx/txt) through the 5-stage
   // AI pipeline (Parse → Analyze → Decide → Persist → Project). Returns the run

@@ -16,6 +16,12 @@ public sealed class DocumentsOptions
     public string LocalRoot { get; init; } = "./.telcopilot/documents";
 
     /// <summary>
+    /// List of additional local or network directories to monitor for PDF auto-ingestion.
+    /// Useful for watching a local OneDrive or Dropbox folder.
+    /// </summary>
+    public List<string> AdditionalWatchFolders { get; init; } = [];
+
+    /// <summary>
     /// Maximum upload size in bytes — guards memory use during ingestion.
     /// Default 25 MB; raise for SOPs with embedded diagrams.
     /// </summary>

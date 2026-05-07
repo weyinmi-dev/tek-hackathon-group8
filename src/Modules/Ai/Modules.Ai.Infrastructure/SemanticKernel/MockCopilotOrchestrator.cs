@@ -104,15 +104,19 @@ internal sealed class MockCopilotOrchestrator(
     {
         if (hits.Count == 0)
         {
-            return string.Empty;
+            return "HISTORICAL CONTEXT\nNo relevant historical reports found in the knowledge base.\n\n";
         }
 
         var sb = new StringBuilder();
         sb.AppendLine("HISTORICAL CONTEXT");
+        sb.AppendLine($"Retrieved {hits.Count} relevant knowledge-base matches:");
         foreach (RetrievedChunk h in hits.Take(3))
         {
-            sb.Append("• [").Append(h.SourceKey).Append("] ").Append(h.Title)
+            sb.Append("  • [").Append(h.SourceKey).Append("] (").Append(h.Category).Append(") ").Append(h.Title)
               .Append(" — ").Append(h.Region).AppendLine();
+            // Optional: peek at the content if it's short
+            string snippet = h.Content.Length > 120 ? h.Content[..120] + "..." : h.Content;
+            sb.Append("    \"").Append(snippet.Replace("\n", " ")).AppendLine("\"");
         }
         sb.AppendLine();
         return sb.ToString();
