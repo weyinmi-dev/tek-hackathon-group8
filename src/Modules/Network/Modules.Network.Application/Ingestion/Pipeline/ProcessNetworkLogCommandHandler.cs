@@ -27,7 +27,6 @@ internal sealed class ProcessNetworkLogCommandHandler(
         ProcessNetworkLogCommand request,
         CancellationToken cancellationToken)
     {
-        
         // 1. Buffer the file once so we can hash it AND re-read it inside Stage 1's parser.
         byte[] bytes = await ReadAllBytesAsync(request.Content, cancellationToken);
         string contentHash = Fingerprints.ContentHash(bytes);
@@ -43,7 +42,18 @@ internal sealed class ProcessNetworkLogCommandHandler(
         //    but only when that run succeeded. Failed runs are re-processed so a retry after a
         //    fix (e.g. a transient AI error) actually runs the pipeline instead of replaying the
         //    stored failure.
-        IngestionRun? prior = await runs.GetByContentHashAsync(contentHash, cancellationToken);
+        IngestionRun? prior;
+        try
+        {
+            prior = await runs.GetByContentHashAsync(contentHash, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Failed to query existing run for content hash {ContentHash}", contentHash);
+            return Result.Failure<IngestionRunSummary>(
+                Error.Failure("Network.Ingestion.DbLookupFailed", ex.Message));
+        }
+
         if (prior is not null && prior.Status == IngestionStatus.Completed)
         {
             logger.LogInformation(
@@ -53,15 +63,25 @@ internal sealed class ProcessNetworkLogCommandHandler(
         }
 
         // 3. Create the run. SaveChanges immediately so subsequent stage handlers can find it by ID.
-        var run = IngestionRun.Start(
-            contentHash: contentHash,
-            fileName: request.FileName,
-            contentType: request.ContentType,
-            fileSizeBytes: bytes.LongLength,
-            submittedBy: request.SubmittedBy,
-            startedAt: DateTimeOffset.UtcNow);
-        await runs.AddAsync(run, cancellationToken);
-        await unitOfWork.SaveChangesAsync(cancellationToken);
+        IngestionRun run;
+        try
+        {
+            run = IngestionRun.Start(
+                contentHash: contentHash,
+                fileName: request.FileName,
+                contentType: request.ContentType,
+                fileSizeBytes: bytes.LongLength,
+                submittedBy: request.SubmittedBy,
+                startedAt: DateTimeOffset.UtcNow);
+            await runs.AddAsync(run, cancellationToken);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Failed to bootstrap ingestion run for {FileName}", request.FileName);
+            return Result.Failure<IngestionRunSummary>(
+                Error.Failure("Network.Ingestion.BootstrapFailed", ex.Message));
+        }
 
         try
         {

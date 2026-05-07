@@ -25,11 +25,13 @@
      dark background in light mode (invisible); these tokens swap with the
      theme so contrast holds in both. */
   --bg-hero: radial-gradient(ellipse at 30% 70%, #0d1525 0%, #06080d 70%);
-  --bg-map:  radial-gradient(ellipse at 50% 60%, #0c1220 0%, #06080d 70%);
-  --grid-stroke:      rgba(255,255,255,.04);
-  --map-shape-stroke: rgba(255,255,255,.06);
-  --map-overlay-bg:     rgba(10,14,22,.7);
-  --map-overlay-shadow: 0 8px 24px rgba(0,0,0,.5);
+  --bg-map:  #0d1b2e;
+  --grid-stroke:      rgba(26,62,120,.85);
+  --map-shape-stroke: rgba(35,80,160,.50);
+  --map-block-fill:   rgba(12,24,50,.70);
+  --map-label-color:  rgba(255,255,255,.45);
+  --map-overlay-bg:     rgba(8,18,36,.88);
+  --map-overlay-shadow: 0 8px 24px rgba(0,0,0,.6);
 }
 
 body.theme-light {
@@ -49,8 +51,10 @@ body.theme-light {
 
   --bg-hero: radial-gradient(ellipse at 30% 70%, #e8ede6 0%, #f6f5f0 70%);
   --bg-map:  radial-gradient(ellipse at 50% 60%, #ecefe7 0%, #f1efe8 70%);
-  --grid-stroke:      rgba(0,0,0,.06);
-  --map-shape-stroke: rgba(0,0,0,.08);
+  --grid-stroke:      rgba(0,0,0,.10);
+  --map-shape-stroke: rgba(0,0,0,.12);
+  --map-block-fill:   rgba(220,225,215,.50);
+  --map-label-color:  rgba(0,0,0,.38);
   --map-overlay-bg:     rgba(255,255,255,.85);
   --map-overlay-shadow: 0 8px 24px rgba(0,0,0,.10);
 }
