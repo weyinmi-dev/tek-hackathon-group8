@@ -2,7 +2,13 @@
   <ItemGroup>
     <ProjectReference Include="..\..\..\Application\Application.csproj" />
     <ProjectReference Include="..\..\Network\Modules.Network.Api\Modules.Network.Api.csproj" />
+    <!-- PipelineCompletedNotification is defined in Network.Application; the dashboard
+         projection handler subscribes to it. -->
+    <ProjectReference Include="..\..\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
     <ProjectReference Include="..\..\Alerts\Modules.Alerts.Api\Modules.Alerts.Api.csproj" />
     <ProjectReference Include="..\Modules.Analytics.Domain\Modules.Analytics.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Modules.Network.UnitTests" />
   </ItemGroup>
 </Project>

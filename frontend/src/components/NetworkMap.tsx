@@ -65,21 +65,21 @@ export function NetworkMap({
           inset: 0,
           width: "100%",
           height: "100%",
-          opacity: 0.4,
         }}
       >
         <defs>
           <pattern
             id="mapgrid"
-            width="5"
-            height="5"
+            width="9"
+            height="9"
             patternUnits="userSpaceOnUse"
           >
+            <rect width="9" height="9" fill="var(--map-block-fill)" />
             <path
-              d="M 5 0 L 0 0 0 5"
+              d="M 9 0 L 0 0 0 9"
               fill="none"
               stroke="var(--grid-stroke)"
-              strokeWidth="0.2"
+              strokeWidth="0.45"
             />
           </pattern>
         </defs>
@@ -97,32 +97,35 @@ export function NetworkMap({
           height: "100%",
         }}
       >
+        {/* Lagoon / water body */}
         <path
           d="M 40 55 Q 55 50 70 60 Q 80 65 75 75 Q 60 80 50 72 Q 42 65 40 55 Z"
-          fill="rgba(91,140,255,.06)"
-          stroke="rgba(91,140,255,.18)"
-          strokeWidth=".2"
+          fill="rgba(13,40,90,.55)"
+          stroke="rgba(40,100,200,.35)"
+          strokeWidth=".3"
         />
+        {/* Lagos boundary */}
         <path
           d="M 5 18 Q 20 12 38 16 Q 55 18 72 14 Q 88 16 95 28 L 96 50 Q 92 62 86 70 Q 80 82 72 88 Q 55 92 42 88 Q 28 84 18 76 Q 8 68 5 52 Z"
           fill="none"
           stroke="var(--map-shape-stroke)"
-          strokeWidth=".25"
+          strokeWidth=".3"
         />
+        {/* Major road overlays */}
         <path
           d="M 8 30 L 95 32"
           stroke="var(--map-shape-stroke)"
-          strokeWidth=".15"
-          strokeDasharray="2 1.5"
+          strokeWidth=".22"
+          strokeDasharray="2.5 1.5"
         />
         <path
           d="M 30 8 L 32 90"
           stroke="var(--map-shape-stroke)"
-          strokeWidth=".15"
-          strokeDasharray="2 1.5"
+          strokeWidth=".22"
+          strokeDasharray="2.5 1.5"
         />
-        <circle cx="74" cy="74" r="14" fill="rgba(255,84,112,.08)" />
-        <circle cx="74" cy="74" r="9" fill="rgba(255,84,112,.12)" />
+        <circle cx="74" cy="74" r="14" fill="rgba(255,84,112,.07)" />
+        <circle cx="74" cy="74" r="9" fill="rgba(255,84,112,.11)" />
       </svg>
 
       {/* Region labels */}
@@ -131,7 +134,7 @@ export function NetworkMap({
           position: "absolute",
           inset: 0,
           pointerEvents: "none",
-          color: "var(--ink-3)",
+          color: "var(--map-label-color)",
           fontFamily: "var(--mono)",
         }}
       >
@@ -145,7 +148,6 @@ export function NetworkMap({
               top: r.y,
               fontSize: 9,
               letterSpacing: ".18em",
-              opacity: 0.5,
               transform: "translate(-50%,-50%)",
             }}
           >

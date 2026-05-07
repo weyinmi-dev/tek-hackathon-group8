@@ -61,25 +61,29 @@ public static class MigrationExtensions
             await creator.CreateAsync();
         }
 
+        // EF Core 10 uses CREATE TABLE IF NOT EXISTS, so CreateTablesAsync succeeds
+        // without throwing even when tables already exist. We must ALWAYS run
+        // AddMissingColumnsAsync to reconcile columns added after the first deploy —
+        // CreateTablesAsync never alters existing tables. On older EF Core (duplicate-table
+        // exception), we also replay the script per-statement to pick up brand-new tables.
+        List<string> deferred = new();
         try
         {
             await creator.CreateTablesAsync();
-            // First-time create — schema matches the model exactly, no diff needed.
-            return;
         }
         catch (PostgresException ex) when (IsDuplicateObject(ex.SqlState))
         {
-            // First-run-after-model-change path: at least one table already exists, but
-            // others may be brand new. Replay the create script per-statement.
+            // Older EF Core that emits plain CREATE TABLE (no IF NOT EXISTS): at least
+            // one table already exists. Replay the create script per-statement so new
+            // tables in the model still get created.
+            deferred = await CreateMissingObjectsAsync(ctx);
         }
 
-        await CreateMissingObjectsAsync(ctx);
-        // After (re)creating tables, also reconcile per-table columns. CreateTablesAsync
-        // never adds columns to a pre-existing table, so any property added to an entity
-        // after the first deploy stays missing in the live schema until we ALTER it in.
-        // This keeps the EnsureCreated flow viable as the model evolves without us having
-        // to introduce EF migrations.
+        // Always reconcile per-table columns. CreateTablesAsync never adds columns to a
+        // pre-existing table, so any property added to an entity after the first deploy
+        // stays missing in the live schema until we ALTER it in.
         await AddMissingColumnsAsync(ctx);
+        await RetryDeferredStatementsAsync(ctx, deferred);
     }
 
     /// <summary>
@@ -111,16 +115,29 @@ public static class MigrationExtensions
                 {
                     continue;
                 }
+                string columnType = property.GetColumnType();
+                string sql;
                 if (!property.IsNullable)
                 {
-                    // A required new column on a populated table can't be added safely
-                    // without a default. Surface it as a log-warning-equivalent so the
-                    // operator notices, but don't crash the whole startup over it.
-                    continue;
-                }
+                    // Value types (int, bool, long, …) can be added safely with the CLR
+                    // default so existing rows get a deterministic, non-null value.
+                    // Required reference types (string, etc.) can't — skip those.
+                    Type clrType = property.ClrType;
+                    if (!clrType.IsValueType)
+                    {
+                        continue;
+                    }
 
-                string columnType = property.GetColumnType();
-                string sql = $"ALTER TABLE \"{schema}\".\"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" {columnType} NULL;";
+                    object defaultValue = Activator.CreateInstance(clrType)!;
+                    string defaultLiteral = defaultValue is bool boolVal
+                        ? boolVal.ToString().ToUpperInvariant()
+                        : defaultValue.ToString()!;
+                    sql = $"ALTER TABLE \"{schema}\".\"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" {columnType} NOT NULL DEFAULT {defaultLiteral};";
+                }
+                else
+                {
+                    sql = $"ALTER TABLE \"{schema}\".\"{tableName}\" ADD COLUMN IF NOT EXISTS \"{columnName}\" {columnType} NULL;";
+                }
                 try
                 {
                     await ctx.Database.ExecuteSqlRawAsync(sql);
@@ -175,9 +192,10 @@ public static class MigrationExtensions
         return columns;
     }
 
-    private static async Task CreateMissingObjectsAsync(DbContext ctx)
+    private static async Task<List<string>> CreateMissingObjectsAsync(DbContext ctx)
     {
         string script = ctx.Database.GenerateCreateScript();
+        var deferred = new List<string>();
         foreach (string statement in SplitPostgresStatements(script))
         {
             string trimmed = statement.Trim();
@@ -194,6 +212,28 @@ public static class MigrationExtensions
             {
                 // 42P07 duplicate_table, 42P06 duplicate_schema, 42710 duplicate_object
                 // (covers indexes, constraints). Idempotent re-run.
+            }
+            catch (PostgresException ex) when (ex.SqlState == "42703")
+            {
+                // undefined_column — typically a CREATE INDEX on a column that was added
+                // to the model after the table was first deployed. Defer so we can retry
+                // after AddMissingColumnsAsync ALTERs it in.
+                deferred.Add(trimmed);
+            }
+        }
+        return deferred;
+    }
+
+    private static async Task RetryDeferredStatementsAsync(DbContext ctx, List<string> deferred)
+    {
+        foreach (string sql in deferred)
+        {
+            try
+            {
+                await ctx.Database.ExecuteSqlRawAsync(sql);
+            }
+            catch (PostgresException ex) when (IsDuplicateObject(ex.SqlState))
+            {
             }
         }
     }

@@ -22,9 +22,15 @@ internal sealed class AlertConfiguration : IEntityTypeConfiguration<Alert>
         builder.Property(a => a.DispatchedBy).HasMaxLength(64);
         builder.Property(a => a.Severity).HasConversion<int>();
         builder.Property(a => a.Status).HasConversion<int>();
+
+        // Stage-4 dedup. Nullable so the auto-EnsureCreated migration helper (which only
+        // adds nullable columns) can roll the new shape into existing alerts tables.
+        builder.Property(a => a.AnomalyFingerprint).HasMaxLength(64);
+
         builder.HasIndex(a => a.Code).IsUnique();
         builder.HasIndex(a => a.Status);
         builder.HasIndex(a => a.RaisedAtUtc);
+        builder.HasIndex(a => a.AnomalyFingerprint);
         builder.Ignore(a => a.DomainEvents);
     }
 }

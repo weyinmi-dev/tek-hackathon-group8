@@ -5,4 +5,8 @@
     <ProjectReference Include="..\Modules.Network.Domain\Modules.Network.Domain.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Modules.Network.UnitTests" />
+  </ItemGroup>
+
 </Project>

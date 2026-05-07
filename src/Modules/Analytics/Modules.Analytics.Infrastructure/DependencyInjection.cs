@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Modules.Analytics.Api;
 using Modules.Analytics.Domain;
 using Modules.Analytics.Domain.Audit;
+using Modules.Analytics.Domain.Ingestion;
 using Modules.Analytics.Infrastructure.Api;
 using Modules.Analytics.Infrastructure.Database;
 using Modules.Analytics.Infrastructure.Repositories;
@@ -23,6 +24,7 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<IAuditRepository, AuditRepository>();
+        services.AddScoped<IIngestionDashboardRepository, IngestionDashboardRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAnalyticsApi, AnalyticsApi>();
         return services;

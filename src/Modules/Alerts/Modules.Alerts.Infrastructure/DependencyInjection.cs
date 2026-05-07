@@ -6,7 +6,10 @@ using Modules.Alerts.Domain;
 using Modules.Alerts.Domain.Alerts;
 using Modules.Alerts.Infrastructure.Api;
 using Modules.Alerts.Infrastructure.Database;
+using Modules.Alerts.Infrastructure.Pipeline;
 using Modules.Alerts.Infrastructure.Repositories;
+using Modules.Network.Application.Ingestion.Stage3_Decide;
+using Modules.Network.Application.Ingestion.Stage4_Persist;
 using SharedKernel;
 
 namespace Modules.Alerts.Infrastructure;
@@ -25,6 +28,11 @@ public static class DependencyInjection
         services.AddScoped<IAlertRepository, AlertRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IAlertsApi, AlertsApi>();
+
+        // Stage-4 cross-module adapters: implement the ports Network.Application defined.
+        services.AddScoped<IAlertSnapshotProvider, AlertSnapshotProvider>();
+        services.AddScoped<IAlertActionExecutor, AlertActionExecutor>();
+
         return services;
     }
 }
