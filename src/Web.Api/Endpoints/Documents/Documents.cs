@@ -174,7 +174,7 @@ public sealed class Documents : IEndpoint
     private static string Form(IFormCollection form, string key, string fallback) =>
         form.TryGetValue(key, out Microsoft.Extensions.Primitives.StringValues v) && !string.IsNullOrWhiteSpace(v) ? v.ToString() : fallback;
 
-    private static IReadOnlyList<string> SplitTags(string raw) =>
+    private static string[] SplitTags(string raw) =>
         string.IsNullOrWhiteSpace(raw)
             ? Array.Empty<string>()
             : raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);

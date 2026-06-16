@@ -1,4 +1,4 @@
-using System.Reflection;
+using Web.Api.Endpoints;
 using System.Text;
 using System.Text.Json.Serialization;
 using Application;
@@ -118,7 +118,7 @@ builder.Services.AddProblemDetails();
 
 builder.Services.ConfigureOptions<ConfigureSwaggerGenOptions>();
 
-builder.Services.AddEndpoints(Assembly.GetExecutingAssembly());
+builder.Services.AddEndpoints(System.Reflection.Assembly.GetExecutingAssembly());
 
 WebApplication app = builder.Build();
 
@@ -127,13 +127,14 @@ WebApplication app = builder.Build();
 RouteGroupBuilder apiGroup = app.MapGroup("api");
 
 app.MapEndpoints(apiGroup);
+apiGroup.MapIoTEndpoints();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await app.ApplyMigrationsAsync();
-    await app.SeedDataAsync();
+   
+   
 }
 
 app.UseCors();
