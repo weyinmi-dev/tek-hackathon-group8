@@ -4,7 +4,10 @@ using Modules.Ai.Domain.Knowledge;
 
 namespace Modules.Ai.Application.Documents.ListDocuments;
 
-public sealed record ListDocumentsQuery() : IQuery<IReadOnlyList<DocumentListItem>>;
+public sealed record ListDocumentsQuery(int Page = 1, int PageSize = 10, string? SearchTerm = null) : IQuery<PagedDocumentResult>;
+
+public sealed record PagedDocumentResult(IReadOnlyList<DocumentListItem> Items, int TotalCount);
+
 
 public sealed record DocumentListItem(
     Guid Id,
@@ -21,4 +24,5 @@ public sealed record DocumentListItem(
     DateTime UploadedAtUtc,
     DateTime? IndexedAtUtc,
     string? LastIndexError,
+    string? RejectionReason,
     string? ExternalReference);

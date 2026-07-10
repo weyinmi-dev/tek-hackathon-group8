@@ -50,6 +50,9 @@ public static class SeedExtensions
                 // already has fresh site / anomaly context to retrieve. The hosted indexer
                 // takes over from here on a 5-minute cadence.
                 await sp.GetRequiredService<EnergyKnowledgeIndexer>().IndexAsync();
+
+                // Auto-discovery of local PDF files moved to the documents store
+                await sp.GetRequiredService<LocalDocumentSeeder>().SeedAsync();
             }
             catch (Exception ex)
             {
