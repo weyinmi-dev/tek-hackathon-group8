@@ -67,6 +67,20 @@ public sealed class ManagedDocument : Entity
     public int Version { get; private set; }
     public Guid? KnowledgeDocumentId { get; private set; }
 
+    /// <summary>
+    /// Human-readable name of the ingestion stage currently executing (e.g. "Embedding",
+    /// "PersistKnowledge"). Drives the async-upload progress indicator. Null until the
+    /// background workflow reports its first stage. Added for Phase 2 §9.5.
+    /// </summary>
+    public string? ProcessingStage { get; private set; }
+
+    /// <summary>
+    /// Identifier of the most recent MAF workflow checkpoint for this document's ingestion
+    /// run, so a restarted worker resumes from the last completed superstep instead of
+    /// re-processing from the top. Null until the first checkpoint is written.
+    /// </summary>
+    public string? CheckpointId { get; private set; }
+
     public static ManagedDocument Create(
         string title,
         string fileName,
@@ -120,6 +134,33 @@ public sealed class ManagedDocument : Entity
     {
         Status = IndexingStatus.Rejected;
         RejectionReason = string.IsNullOrWhiteSpace(reason) ? "No reason provided by AI validator." : reason;
+        LastIndexError = null;
+    }
+
+    /// <summary>
+    /// Records progress through the asynchronous ingestion workflow: the stage now running and,
+    /// when available, the checkpoint to resume from after a crash. Informational only — leaves
+    /// <see cref="Status"/> at <see cref="IndexingStatus.InProgress"/> for the duration.
+    /// </summary>
+    public void RecordProgress(string stage, string? checkpointId)
+    {
+        if (!string.IsNullOrWhiteSpace(stage))
+        {
+            ProcessingStage = stage;
+        }
+        if (!string.IsNullOrWhiteSpace(checkpointId))
+        {
+            CheckpointId = checkpointId;
+        }
+    }
+
+    /// <summary>
+    /// Marks ingestion as deliberately cancelled (operator abort or shutdown drain). Distinct
+    /// from <see cref="MarkFailed"/> — cancellation is not an error, so no LastIndexError is set.
+    /// </summary>
+    public void MarkCancelled()
+    {
+        Status = IndexingStatus.Cancelled;
         LastIndexError = null;
     }
 
