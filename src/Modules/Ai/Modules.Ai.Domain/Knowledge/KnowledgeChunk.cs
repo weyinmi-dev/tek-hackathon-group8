@@ -1,4 +1,3 @@
-using Pgvector;
 using SharedKernel;
 
 namespace Modules.Ai.Domain.Knowledge;
@@ -16,7 +15,7 @@ public sealed class KnowledgeChunk : Entity
         int ordinal,
         string content,
         int tokenEstimate,
-        Vector embedding) : base(id)
+        float[] embedding) : base(id)
     {
         DocumentId = documentId;
         Ordinal = ordinal;
@@ -33,11 +32,13 @@ public sealed class KnowledgeChunk : Entity
     public int TokenEstimate { get; private set; }
 
     /// <summary>
-    /// Stored as a pgvector column. Dimensionality matches whichever embedding model the
-    /// indexer was running when the row was written (default 1536 — text-embedding-3-small).
+    /// The chunk's embedding as raw floats. Persisted to a pgvector <c>vector(N)</c> column by
+    /// the infrastructure mapping (a value converter bridges <c>float[]</c> ↔ the pgvector type),
+    /// so the domain carries no dependency on any vector library. Dimensionality matches whichever
+    /// embedding model the indexer ran when the row was written (default 1536).
     /// </summary>
-    public Vector Embedding { get; private set; } = null!;
+    public float[] Embedding { get; private set; } = null!;
 
-    public static KnowledgeChunk Create(Guid documentId, int ordinal, string content, int tokenEstimate, Vector embedding) =>
+    public static KnowledgeChunk Create(Guid documentId, int ordinal, string content, int tokenEstimate, float[] embedding) =>
         new(Guid.NewGuid(), documentId, ordinal, content, tokenEstimate, embedding);
 }

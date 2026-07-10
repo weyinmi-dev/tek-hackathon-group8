@@ -62,7 +62,7 @@ internal sealed class RagIndexer(
         var rows = new List<KnowledgeChunk>(chunks.Count);
         for (int i = 0; i < chunks.Count; i++)
         {
-            rows.Add(KnowledgeChunk.Create(documentId, chunks[i].Ordinal, chunks[i].Content, chunks[i].TokenEstimate, vectors[i]));
+            rows.Add(KnowledgeChunk.Create(documentId, chunks[i].Ordinal, chunks[i].Content, chunks[i].TokenEstimate, vectors[i].ToArray()));
         }
         await knowledge.ReplaceChunksAsync(documentId, rows, cancellationToken);
 
