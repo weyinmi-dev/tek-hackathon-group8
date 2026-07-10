@@ -7,6 +7,7 @@ using Modules.Ai.Application.Rag.Retrievers;
 using Modules.Ai.Application.SemanticKernel;
 using Modules.Alerts.Api;
 using Modules.Network.Api;
+using Modules.Network.Domain.Runbooks;
 
 namespace Modules.Ai.Infrastructure.SemanticKernel;
 
@@ -86,7 +87,7 @@ internal sealed class MockCopilotOrchestrator(
             • Confidence in attribution: {focal.Confidence.ToString("P0", CultureInfo.InvariantCulture)}
 
             RECOMMENDED ACTIONS
-            {SuggestActionsFor(focal.Cause, focal.TowerCode)}
+            {RunbookPolicy.Recommend(focal.Cause, focal.TowerCode)}
 
             {ragSection}CONFIDENCE
             {(int)(focal.Confidence * 100)} % — derived from telemetry correlation across {towers.Count} towers, {active.Count} active incidents, and {ragHits.Count} historical knowledge-base matches.
@@ -128,17 +129,4 @@ internal sealed class MockCopilotOrchestrator(
         "warn" => 1,
         _ => 0,
     };
-
-    private static string SuggestActionsFor(string cause, string towerCode)
-    {
-        const StringComparison ic = StringComparison.OrdinalIgnoreCase;
-        return cause switch
-        {
-            var x when x.Contains("fiber", ic) => $"1. Dispatch field-team-3 to nearest fiber junction serving {towerCode} (ETA <30 min)\n2. Auto-shed traffic from {towerCode} → adjacent towers in the same region\n3. Open ticket with civil-works contractor — request immediate halt",
-            var x when x.Contains("power", ic) || x.Contains("grid", ic) => $"1. Engage genset failover for the affected cluster within 15 min\n2. Notify IKEDC of impacted feeder\n3. Pre-position fuel for next 12h",
-            var x when x.Contains("congest", ic) || x.Contains("load", ic) => $"1. Trigger automated load-shed onto idle neighbouring cells\n2. Reprioritise voice-over-data scheduling for {towerCode}\n3. Open capacity ticket — add carrier or upgrade backhaul",
-            var x when x.Contains("predict", ic) || x.Contains("thermal", ic) => "1. Schedule preventive maintenance window in next 2h\n2. Pre-provision spare amplifier for hot-swap\n3. Subscribe NOC to thermal-trend alerts at 80% threshold",
-            _ => "1. Open P2 ticket and assign Tier-2 NOC on-call\n2. Capture 5-minute telemetry snapshot for impacted segment\n3. If subscriber impact >5k, notify customer-care and post status page",
-        };
-    }
 }
