@@ -13,6 +13,10 @@
 //   dotnet run --project tools/BaselineCapture -- verify    # diffs against them, exit 1 on drift
 using System.Text.Json;
 using Application;
+using Microsoft.Agents.AI;
+using Modules.Ai.Agents.Agents;
+using Modules.Ai.Agents.Infrastructure;
+using Modules.Ai.Agents.Tools;
 using Application.Abstractions.Events;
 using Application.Abstractions.Storage;
 using FluentValidation;
@@ -59,6 +63,14 @@ string mode = args.Length > 0 ? args[0].ToLowerInvariant() : "capture";
 string repoRoot = Directory.GetCurrentDirectory();
 string fixtureDir = Path.Combine(repoRoot, "scripts", "baseline", "fixtures");
 string baselineDir = Path.Combine(repoRoot, "docs", "baselines");
+
+// M6 smoke test — needs no database: build the copilot agent over the deterministic offline
+// chat client and a sender that throws if a tool is invoked (offline mode must not call tools),
+// then run it and confirm the offline response comes back.
+if (mode == "agent")
+{
+    return await RunAgentSmokeAsync();
+}
 
 if (!Directory.Exists(fixtureDir))
 {
@@ -109,6 +121,34 @@ Console.WriteLine(mode == "verify"
     ? (exit == 0 ? "PARITY HELD." : "PARITY BROKEN — review diffs.")
     : "Baseline captured.");
 return exit;
+
+// ── M6 agent smoke ──────────────────────────────────────────────────────────
+static async Task<int> RunAgentSmokeAsync()
+{
+    using var chat = new DeterministicChatClient();
+    var sender = new ThrowingSender();
+
+    AIAgent agent = new OperationsCopilotAgentBuilder(
+        chat,
+        new NetworkTools(sender),
+        new AlertTools(sender),
+        new EnergyTools(sender),
+        new KnowledgeTools(sender),
+        new DocumentTools(sender)).Build();
+
+    var response = await agent.RunAsync("What is the status of TWR-LEK-003?");
+    string text = response.ToString() ?? string.Empty;
+    Console.WriteLine($"agent replied: {text}");
+
+    if (!text.Contains("OFFLINE MODE", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("AGENT SMOKE FAILED — expected the deterministic offline response.");
+        return 1;
+    }
+
+    Console.WriteLine("AGENT SMOKE PASSED — the copilot agent builds and runs offline, no network or database, tools untouched.");
+    return 0;
+}
 
 // ── pipeline drive ──────────────────────────────────────────────────────────
 static async Task<ParityCounts> RunFixtureAsync(IServiceProvider sp, string csvPath)
@@ -238,4 +278,18 @@ internal sealed class CapturingEventBus : IEventBus
 {
     public Task PublishAsync<T>(T integrationEvent, CancellationToken cancellationToken = default)
         where T : class, IIntegrationEvent => Task.CompletedTask;
+}
+
+// Fails if any tool is dispatched — offline mode must answer without invoking tools, since the
+// deterministic chat client never emits tool calls.
+internal sealed class ThrowingSender : ISender
+{
+    private static InvalidOperationException Unexpected()
+        => new("A tool was dispatched during the offline agent smoke test — not expected.");
+
+    public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default) => throw Unexpected();
+    public Task<object?> Send(object request, CancellationToken cancellationToken = default) => throw Unexpected();
+    public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default) where TRequest : IRequest => throw Unexpected();
+    public IAsyncEnumerable<TResponse> CreateStream<TResponse>(IStreamRequest<TResponse> request, CancellationToken cancellationToken = default) => throw Unexpected();
+    public IAsyncEnumerable<object?> CreateStream(object request, CancellationToken cancellationToken = default) => throw Unexpected();
 }

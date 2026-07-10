@@ -20,5 +20,6 @@
     <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Domain\Modules.Analytics.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Infrastructure\Modules.Analytics.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Infrastructure\Modules.Ai.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Agents\Modules.Ai.Agents.csproj" />
   </ItemGroup>
 </Project>

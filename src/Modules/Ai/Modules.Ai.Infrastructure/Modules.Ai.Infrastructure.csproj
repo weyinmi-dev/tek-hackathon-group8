@@ -31,6 +31,8 @@
     <ProjectReference Include="..\..\Analytics\Modules.Analytics.Api\Modules.Analytics.Api.csproj" />
     <ProjectReference Include="..\..\Energy\Modules.Energy.Api\Modules.Energy.Api.csproj" />
     <ProjectReference Include="..\Modules.Ai.Application\Modules.Ai.Application.csproj" />
+    <!-- Composition root: the only project permitted to reference the MAF agent layer (Phase 2 §4.1). -->
+    <ProjectReference Include="..\Modules.Ai.Agents\Modules.Ai.Agents.csproj" />
   </ItemGroup>
 
   <ItemGroup>
