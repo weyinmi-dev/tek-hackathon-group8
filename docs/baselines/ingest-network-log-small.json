@@ -1,0 +1,9 @@
+{
+  "EventsParsed": 3,
+  "AnomaliesDetected": 3,
+  "AlertsCreated": 3,
+  "AlertsUpdated": 0,
+  "OptimizationsCreated": 1,
+  "TopologyChanged": true,
+  "FinalStatus": "Completed"
+}

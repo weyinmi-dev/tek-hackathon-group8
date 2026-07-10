@@ -62,10 +62,21 @@ if your stack binds elsewhere. Admin credentials default to the seeded
 The golden files record what the pipeline actually produced — capture them once
 against the current build, then treat them as fixed.
 
-## Known limitation
+## Two harnesses
 
-This harness exercises the pipeline over HTTP against a stateful database. A
-more robust design runs the handlers in-process against an ephemeral
-(Testcontainers) Postgres, getting a fresh DB per run for free and removing the
-dedup footgun entirely. That is a candidate refinement if the fresh-DB
-discipline proves error-prone in practice.
+**Primary — `tools/BaselineCapture` (in-process, Testcontainers).** The verified
+parity gate. Spins a fresh `postgres:17.6` container per run and drives the real
+`ProcessNetworkLogCommand` pipeline in-process, so the content-hash dedup never
+fires and each run genuinely re-executes the analyzer. Golden files live in
+`docs/baselines/`. Requires Docker; the network pipeline needs no `vector`
+extension, so plain `postgres:17.6` suffices.
+
+```powershell
+dotnet run --project tools/BaselineCapture -- capture   # establish the baseline
+dotnet run --project tools/BaselineCapture -- verify    # after each milestone; exit 1 on drift
+```
+
+**Alternative — the PowerShell scripts here (HTTP, live stack).** Exercise the
+pipeline over HTTP against a running Aspire stack. Useful as an integration-level
+smoke test, but subject to the dedup trap above, so they require a fresh database
+each run. Prefer the in-process harness for the parity gate.

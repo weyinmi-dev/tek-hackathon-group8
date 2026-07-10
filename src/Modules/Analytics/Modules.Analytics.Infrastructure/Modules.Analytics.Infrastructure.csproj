@@ -7,5 +7,6 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Modules.Network.UnitTests" />
+    <InternalsVisibleTo Include="BaselineCapture" />
   </ItemGroup>
 </Project>
