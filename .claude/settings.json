@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Weyinmi Madamedon\\\\source\\\\repos\\\\tek-hackthn-grp8\" -Recurse -Name)"
+    ]
+  }
+}

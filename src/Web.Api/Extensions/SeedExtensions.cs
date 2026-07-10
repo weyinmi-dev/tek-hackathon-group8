@@ -39,15 +39,25 @@ public static class SeedExtensions
         if (ragOptions.Enabled && ragOptions.AutoSeedCorpus)
         {
             ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("KnowledgeCorpusSeeder");
-            await KnowledgeCorpusSeeder.SeedAsync(
-                sp.GetRequiredService<IRagIndexer>(),
-                sp.GetRequiredService<IKnowledgeRepository>(),
-                logger);
+            try
+            {
+                await KnowledgeCorpusSeeder.SeedAsync(
+                    sp.GetRequiredService<IRagIndexer>(),
+                    sp.GetRequiredService<IKnowledgeRepository>(),
+                    logger);
 
-            // First-pass energy → knowledge ingestion so the very first Copilot query
-            // already has fresh site / anomaly context to retrieve. The hosted indexer
-            // takes over from here on a 5-minute cadence.
-            await sp.GetRequiredService<EnergyKnowledgeIndexer>().IndexAsync();
+                // First-pass energy → knowledge ingestion so the very first Copilot query
+                // already has fresh site / anomaly context to retrieve. The hosted indexer
+                // takes over from here on a 5-minute cadence.
+                await sp.GetRequiredService<EnergyKnowledgeIndexer>().IndexAsync();
+            }
+            catch (Exception ex)
+            {
+                // Corpus seeding calls the embedding model — if the AI provider is
+                // misconfigured (missing deployment, wrong endpoint) the app should
+                // still start; RAG queries simply return no context until fixed.
+                logger.LogWarning(ex, "Knowledge corpus seeding failed — RAG will be unavailable until the AI provider is configured correctly.");
+            }
         }
     }
 }

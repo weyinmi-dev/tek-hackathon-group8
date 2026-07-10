@@ -36,7 +36,7 @@ builder.Host.UseSerilog((context, loggerConfig) =>
     loggerConfig.ReadFrom.Configuration(context.Configuration));
 
 builder.Services.AddCors(opts => opts.AddDefaultPolicy(p => p
-    .WithOrigins("http://localhost:3000", "http://localhost", "http://127.0.0.1:3000")
+    .WithOrigins("http://localhost:3000", "http://localhost", "http://localhost:8080", "http://127.0.0.1:3000")
     .AllowAnyHeader()
     .AllowAnyMethod()
     .AllowCredentials()));
@@ -128,12 +128,15 @@ RouteGroupBuilder apiGroup = app.MapGroup("api");
 
 app.MapEndpoints(apiGroup);
 
+// Migrations and seeding run in every environment so the DB is always
+// initialised regardless of ASPNETCORE_ENVIRONMENT (Production included).
+await app.ApplyMigrationsAsync();
+await app.SeedDataAsync();
+
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    await app.ApplyMigrationsAsync();
-    await app.SeedDataAsync();
 }
 
 app.UseCors();
