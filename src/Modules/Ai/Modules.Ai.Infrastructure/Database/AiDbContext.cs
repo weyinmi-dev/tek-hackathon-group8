@@ -40,5 +40,7 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
         modelBuilder.ApplyConfiguration(new ManagedDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new ConversationConfiguration());
         modelBuilder.ApplyConfiguration(new MessageConfiguration());
+        modelBuilder.ApplyConfiguration(new OutboxMessageConfiguration());
+        modelBuilder.ApplyConfiguration(new WorkflowCheckpointConfiguration());
     }
 }

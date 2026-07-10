@@ -101,6 +101,14 @@ public static class DependencyInjection
         services.AddScoped<IManagedDocumentRepository, ManagedDocumentRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+        // Durability substrate (Phase 3 M5). Both are additive and idle until wired: the outbox
+        // table stays empty until the async document pipeline writes to it (M9), and the
+        // checkpoint store is consumed by the workflow host (M7). Registered here so the tables
+        // are provisioned and the port resolves.
+        services.AddScoped<Modules.Ai.Application.Workflows.IWorkflowCheckpointStore,
+            Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore>();
+        services.AddHostedService<Modules.Ai.Infrastructure.Outbox.OutboxProcessor>();
+
         // Bind AiOptions through IOptions so the OSM layer (and anything else that needs the
         // sub-options) can consume it via constructor injection rather than re-binding the section.
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
