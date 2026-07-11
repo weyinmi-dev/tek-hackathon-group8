@@ -48,7 +48,20 @@ public sealed class DeterministicChatClient : IChatClient
 
     private static string BuildReply(IEnumerable<ChatMessage> messages)
     {
-        string? lastUser = messages.LastOrDefault(m => m.Role == ChatRole.User)?.Text;
+        List<ChatMessage> all = messages.ToList();
+
+        // Document-intake gate: when the instructions are the knowledge-base gatekeeper prompt,
+        // answer as that gatekeeper so offline uploads still reach Indexed instead of being
+        // rejected for want of a model. Without this, DocumentIngestionWorkflow's ValidateRelevance
+        // reads "OFFLINE MODE" as not-relevant and rejects every document in an offline stack.
+        string joined = string.Join("\n", all.Select(m => m.Text));
+        if (joined.Contains("RELEVANT or IRRELEVANT", StringComparison.OrdinalIgnoreCase)
+            || joined.Contains("quality-control gatekeeper", StringComparison.OrdinalIgnoreCase))
+        {
+            return "RELEVANT\nOffline mode: accepted without model review.";
+        }
+
+        string? lastUser = all.LastOrDefault(m => m.Role == ChatRole.User)?.Text;
         return string.IsNullOrWhiteSpace(lastUser)
             ? "OFFLINE MODE: deterministic response (no model configured)."
             : $"OFFLINE MODE: deterministic response to \"{lastUser.Trim()}\".";

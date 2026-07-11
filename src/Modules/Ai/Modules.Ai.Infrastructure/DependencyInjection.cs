@@ -127,6 +127,16 @@ public static class DependencyInjection
         AddOsmLayer(services, configuration);
         AddMcpPluginLayer(services);
 
+        // MAF document-ingestion workflow (Phase 3 M9). The offline/Mock stack uses the deterministic
+        // chat client for the intake gate; the Azure IChatClient is wired at M11 (copilot cutover).
+        // The host is registered explicitly because MediatR scans the Application assembly, not this
+        // one — it reacts to DocumentUploaded and runs the workflow with Postgres checkpointing (D6).
+        services.AddSingleton<Microsoft.Extensions.AI.IChatClient, Modules.Ai.Agents.Infrastructure.DeterministicChatClient>();
+        services.AddScoped<Modules.Ai.Agents.Agents.DocumentIntakeAgentBuilder>();
+        services.AddScoped<Modules.Ai.Agents.Workflows.DocumentIngestion.DocumentIngestionWorkflowBuilder>();
+        services.AddScoped<MediatR.INotificationHandler<global::Application.Abstractions.Events.DocumentUploaded>,
+            Modules.Ai.Infrastructure.Hosting.DocumentIngestionWorkflowHost>();
+
         if (useAzure)
         {
             // SK's AzureOpenAIClient appends "/openai/deployments/{deployment}/chat/completions"
