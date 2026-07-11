@@ -40,7 +40,7 @@ public sealed partial class ValidateRelevanceExecutor(AIAgent intakeAgent) : Exe
     public async ValueTask<ValidationResult> HandleAsync(ExtractedText input, IWorkflowContext context)
     {
         string preview = input.Text.Length > 2000 ? input.Text[..2000] : input.Text;
-        var response = await intakeAgent.RunAsync(
+        AgentResponse response = await intakeAgent.RunAsync(
             $"File: {input.Doc.FileName}\nCategory: {input.Doc.Category}\n\n{preview}");
         string verdict = response.ToString() ?? string.Empty;
 
