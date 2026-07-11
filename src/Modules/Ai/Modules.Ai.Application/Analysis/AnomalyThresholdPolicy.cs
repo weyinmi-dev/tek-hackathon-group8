@@ -1,7 +1,7 @@
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
-using Modules.Network.Domain.Ingestion;
+using Application.Abstractions.Pipeline;
 
-namespace Modules.Network.Application.Ingestion.Stage2_Analyze;
+
+namespace Modules.Ai.Application.Analysis;
 
 /// <summary>
 /// The Network module's deterministic anomaly-classification rules — extracted from the
@@ -45,14 +45,14 @@ public static class AnomalyThresholdPolicy
     /// </summary>
     public static void EvaluateTower(
         string towerCode,
-        IReadOnlyList<NetworkEvent> events,
+        IReadOnlyList<NetworkEventSnapshot> events,
         List<DetectedAnomaly> anomalies,
         List<ProposedOptimization> optimizations,
         List<TowerStatusChange> statusChanges,
         List<TowerMetricUpdate> metricUpdates)
     {
-        NetworkEvent first = events[0];
-        NetworkEvent last = events[^1];
+        NetworkEventSnapshot first = events[0];
+        NetworkEventSnapshot last = events[^1];
 
         // ── Anomaly: signal drop ──────────────────────────────────────────
         if (first.SignalPct is int firstSignal &&

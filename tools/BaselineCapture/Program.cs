@@ -28,8 +28,6 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Modules.Ai.Infrastructure.Pipeline;
-using Modules.Ai.Infrastructure.Pipeline.Validators;
 using Modules.Alerts.Application;
 using Modules.Alerts.Domain.Alerts;
 using Modules.Alerts.Infrastructure.Database;
@@ -43,7 +41,7 @@ using Modules.Network.Application;
 using Modules.Network.Application.Ingestion.Pipeline;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
 using Modules.Network.Domain.Ingestion;
@@ -480,8 +478,11 @@ static ServiceProvider BuildProvider(string connectionString)
     services.AddSingleton<IDecisionEngine, DefaultDecisionEngine>();
     services.AddScoped<ITowerSnapshotProvider, TowerSnapshotProvider>();
 
-    services.AddSingleton<IValidator<AiAnalysisResult>, AiAnalysisResultValidator>();
-    services.AddSingleton<INetworkBatchAnalyzer, HeuristicNetworkBatchAnalyzer>();
+    // Stage-2 now runs through NetworkLogAnalysisWorkflow (Phase 3 M12) — the same code path the app
+    // uses — so this parity check actually exercises the workflow that replaced the SK and heuristic
+    // analyzers. A DIFF here means the threshold policy was not a faithful extraction.
+    services.AddSingleton<Modules.Ai.Agents.Workflows.NetworkAnalysis.NetworkLogAnalysisWorkflowBuilder>();
+    services.AddSingleton<INetworkBatchAnalyzer, Modules.Ai.Infrastructure.Analysis.WorkflowNetworkBatchAnalyzer>();
 
     services.AddScoped<IAlertRepository, AlertRepository>();
     services.AddScoped<AlertsUow, AlertsUowImpl>();

@@ -1,4 +1,4 @@
-namespace Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+namespace Application.Abstractions.Pipeline;
 
 /// <summary>
 /// Schema-validated AI output describing one detected anomaly. <see cref="Confidence"/>

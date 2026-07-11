@@ -1,4 +1,4 @@
-namespace Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+namespace Application.Abstractions.Pipeline;
 
 public sealed record TopologyDelta(
     IReadOnlyList<TowerStatusChange> StatusChanges,

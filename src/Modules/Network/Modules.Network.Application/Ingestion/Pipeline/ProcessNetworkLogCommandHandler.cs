@@ -5,7 +5,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
 using Modules.Network.Domain;

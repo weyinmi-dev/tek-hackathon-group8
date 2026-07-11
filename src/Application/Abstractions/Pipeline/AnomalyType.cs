@@ -1,4 +1,4 @@
-namespace Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+namespace Application.Abstractions.Pipeline;
 
 /// <summary>
 /// The closed set of anomaly categories the AI is allowed to emit. Constraining

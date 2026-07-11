@@ -1,4 +1,4 @@
-namespace Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+namespace Application.Abstractions.Pipeline;
 
 /// <summary>
 /// The composite, schema-enforced result of one Stage 2 AI invocation. The

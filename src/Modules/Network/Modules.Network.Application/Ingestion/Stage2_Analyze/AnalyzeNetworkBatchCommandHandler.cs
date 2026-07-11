@@ -1,6 +1,6 @@
 using Application.Abstractions.Messaging;
 using Microsoft.Extensions.Logging;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Domain.Ingestion;
 using SharedKernel;
 
@@ -36,8 +36,21 @@ internal sealed class AnalyzeNetworkBatchCommandHandler(
             "Run {IngestionRunId}: invoking AI analyzer over {EventCount} events",
             run.Id, events.Count);
 
+        // The analyzer contract is module-neutral (Phase 3 M12): project the domain entities into
+        // snapshots so the analysis side never sees Network's domain model.
+        List<NetworkEventSnapshot> snapshots = events
+            .Select(e => new NetworkEventSnapshot(
+                e.IngestionRunId,
+                e.OccurredAt,
+                e.TowerCode,
+                e.SignalPct,
+                e.LoadPct,
+                e.LatencyMs,
+                e.RawStatus))
+            .ToList();
+
         Result<AiAnalysisResult> analysisResult = await analyzer.AnalyzeAsync(
-            run.Id, events, request.McpFilePath, cancellationToken);
+            run.Id, snapshots, request.McpFilePath, cancellationToken);
         return analysisResult;
     }
 }

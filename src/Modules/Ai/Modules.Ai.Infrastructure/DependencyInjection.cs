@@ -5,7 +5,6 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Microsoft.SemanticKernel;
 using Npgsql;
 using Application.Abstractions.Storage;
 using Modules.Ai.Application.Mcp.Clients;
@@ -19,7 +18,6 @@ using Modules.Ai.Application.Rag.Indexing;
 using Modules.Ai.Application.Rag.Ingestion;
 using Modules.Ai.Application.Rag.Retrievers;
 using Modules.Ai.Application.Rag.Stores;
-using Modules.Ai.Application.SemanticKernel;
 using Modules.Ai.Domain;
 using Modules.Ai.Domain.Conversations;
 using Modules.Ai.Domain.Documents;
@@ -38,16 +36,11 @@ using Modules.Ai.Infrastructure.Rag.Storage;
 using Modules.Ai.Infrastructure.Rag.Storage.Providers;
 using Modules.Ai.Infrastructure.Rag.Stores;
 using Modules.Ai.Infrastructure.Repositories;
-using Modules.Ai.Infrastructure.Pipeline;
-using Modules.Ai.Infrastructure.Pipeline.Skills;
-using Modules.Ai.Infrastructure.Pipeline.Validators;
 using Modules.Ai.Infrastructure.SemanticKernel;
-using Modules.Ai.Infrastructure.SemanticKernel.Skills;
 using FluentValidation;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using SharedKernel;
-using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
 // Microsoft.Extensions.AI also declares an IEmbeddingGenerator; alias the unqualified name to the
 // module's RAG embedding port so existing registrations stay unambiguous.
 using IEmbeddingGenerator = Modules.Ai.Application.Rag.Embeddings.IEmbeddingGenerator;
@@ -128,7 +121,7 @@ public static class DependencyInjection
             !string.IsNullOrWhiteSpace(ai.AzureOpenAi.ApiKey);
 
         AddRagPipeline(services, rag, configuration);
-        AddDocumentPipeline(services, configuration, useAzure);
+        AddDocumentPipeline(services, configuration);
         AddOsmLayer(services, configuration);
         AddMcpPluginLayer(services);
 
@@ -153,49 +146,12 @@ public static class DependencyInjection
 
         if (useAzure)
         {
-            // SK's AzureOpenAIClient appends "/openai/deployments/{deployment}/chat/completions"
-            // to whatever endpoint we pass, so it must be the resource root. Operators commonly
-            // paste a Foundry-style URL ending in "/api/projects/<p>/openai/v1/responses"; strip
-            // it back to "<scheme>://<host>/" so request URIs come out correct.
+            // The endpoint must be the resource root: operators commonly paste a Foundry-style URL
+            // ending in "/api/projects/<p>/openai/v1/responses"; strip it back to "<scheme>://<host>/"
+            // so request URIs come out correct.
             string normalizedEndpoint = NormalizeAzureOpenAiEndpoint(ai.AzureOpenAi.Endpoint);
 
-            services.AddScoped<DiagnosticsSkill>();
-            services.AddScoped<OutageSkill>();
-            services.AddScoped<RecommendationSkill>();
-            services.AddScoped<KnowledgeSkill>();
-            services.AddScoped<InternalToolsSkill>();
-            services.AddScoped<EnergySkill>();
-            services.AddScoped<OsmSkill>();
-
-            services.AddScoped<Kernel>(sp =>
-            {
-                IKernelBuilder kb = Kernel.CreateBuilder();
-                kb.AddAzureOpenAIChatCompletion(
-                    deploymentName: ai.AzureOpenAi.Deployment,
-                    endpoint: normalizedEndpoint,
-                    apiKey: ai.AzureOpenAi.ApiKey);
-
-                kb.Services.AddSingleton<PromptExecutionSettings>(new AzureOpenAIPromptExecutionSettings
-                {
-                    Temperature = 0.7,
-                    ResponseFormat = "json_object"
-                });
-
-                sp.GetRequiredService<FileMcpClient>().AddToKernelBuilder(kb);
-
-                Kernel k = kb.Build();
-                k.Plugins.AddFromObject(sp.GetRequiredService<DiagnosticsSkill>(),    nameof(DiagnosticsSkill));
-                k.Plugins.AddFromObject(sp.GetRequiredService<OutageSkill>(),         nameof(OutageSkill));
-                k.Plugins.AddFromObject(sp.GetRequiredService<RecommendationSkill>(), nameof(RecommendationSkill));
-                k.Plugins.AddFromObject(sp.GetRequiredService<KnowledgeSkill>(),      nameof(KnowledgeSkill));
-                k.Plugins.AddFromObject(sp.GetRequiredService<InternalToolsSkill>(),  nameof(InternalToolsSkill));
-                k.Plugins.AddFromObject(sp.GetRequiredService<EnergySkill>(),         nameof(EnergySkill));
-                k.Plugins.AddFromObject(sp.GetRequiredService<OsmSkill>(),            nameof(OsmSkill));
-                return k;
-            });
-            services.AddScoped(sp => sp.GetRequiredService<Kernel>().GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
-
-            // MAF copilot chat client (Phase 3 M11): the Azure OpenAI chat model exposed as a
+            // MAF chat client (Phase 3 M11): the Azure OpenAI chat model exposed as a
             // Microsoft.Extensions.AI IChatClient. Shared by the copilot and document-intake agents.
             services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ =>
                 new Azure.AI.OpenAI.AzureOpenAIClient(
@@ -203,27 +159,20 @@ public static class DependencyInjection
                         new System.ClientModel.ApiKeyCredential(ai.AzureOpenAi.ApiKey))
                     .GetChatClient(ai.AzureOpenAi.Deployment)
                     .AsIChatClient());
-
-            // Stage 2 — three SK skills + the wrapper that composes/validates/retries them.
-            // Skills are NOT added to Kernel.Plugins because the analyzer invokes them
-            // deterministically rather than letting the chat model auto-select them.
-            services.AddScoped<INetworkAnomalySkill, SemanticKernelNetworkAnomalySkill>();
-            services.AddScoped<INetworkOptimizationSkill, SemanticKernelNetworkOptimizationSkill>();
-            services.AddScoped<INetworkEnergySkill, SemanticKernelNetworkEnergySkill>();
-            services.AddScoped<INetworkTopologyMappingSkill, SemanticKernelNetworkTopologyMappingSkill>();
-            services.AddSingleton<IValidator<AiAnalysisResult>, AiAnalysisResultValidator>();
-            services.AddScoped<INetworkBatchAnalyzer, SemanticKernelNetworkBatchAnalyzer>();
         }
         else
         {
             // Offline copilot + document-intake chat client — the deterministic client (M11); the
             // copilot answers offline instead of needing a live model.
             services.AddSingleton<Microsoft.Extensions.AI.IChatClient, Modules.Ai.Agents.Infrastructure.DeterministicChatClient>();
-
-            // Heuristic Stage-2 fallback: lets the pipeline run end-to-end without an Azure
-            // OpenAI key. Required by the demo + by deterministic integration tests.
-            services.AddSingleton<INetworkBatchAnalyzer, HeuristicNetworkBatchAnalyzer>();
         }
+
+        // Stage-2 analysis is now NetworkLogAnalysisWorkflow (Phase 3 M12), replacing BOTH the
+        // Semantic Kernel and heuristic batch analyzers (deleted). Its deterministic threshold policy
+        // owns the outcome, so it registers once for either provider and needs no model to run —
+        // which is precisely why the pipeline's parity counts are unchanged.
+        services.AddScoped<Modules.Ai.Agents.Workflows.NetworkAnalysis.NetworkLogAnalysisWorkflowBuilder>();
+        services.AddScoped<INetworkBatchAnalyzer, Modules.Ai.Infrastructure.Analysis.WorkflowNetworkBatchAnalyzer>();
 
         return services;
     }
@@ -344,7 +293,7 @@ public static class DependencyInjection
         services.AddHostedService<GeoCacheWarmer>();
     }
 
-    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration, bool useAzure)
+    private static void AddDocumentPipeline(IServiceCollection services, IConfiguration configuration)
     {
         DocumentsOptions docs = configuration.GetSection(DocumentsOptions.SectionName).Get<DocumentsOptions>() ?? new DocumentsOptions();
         services.AddSingleton(docs);
@@ -377,14 +326,11 @@ public static class DependencyInjection
         // class comment for the full story. Singleton is fine; it's stateless apart from
         // the injected logger.
         services.AddSingleton<IDocumentTextExtractor, DefaultDocumentTextExtractor>();
-        if (useAzure)
-        {
-            services.AddScoped<IDocumentValidator, AiDocumentValidator>();
-        }
-        else
-        {
-            services.AddScoped<IDocumentValidator, MockDocumentValidator>();
-        }
+
+        // The Semantic-Kernel document validator is gone (Phase 3 M12). Uploads are now gated by the
+        // DocumentIntakeAgent inside DocumentIngestionWorkflow; this deterministic validator only
+        // still serves the legacy DocumentIngestionService path (reindex / cloud-link / seed).
+        services.AddScoped<IDocumentValidator, MockDocumentValidator>();
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
         services.AddScoped<IDocumentSyncService, DocumentSyncService>();
     }
