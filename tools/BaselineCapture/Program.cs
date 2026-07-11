@@ -135,62 +135,100 @@ return exit;
 // ── M7 workflow kill-and-resume ───────────────────────────────────────────────
 static async Task<int> RunWorkflowSmokeAsync()
 {
-    Workflow BuildProbe()
+    // A linear chain with a data-driven conditional split — DocumentIngestion's shape:
+    // ingest → gate → (keep | drop). The two gate edges carry the accept/reject predicates, so a
+    // seed of 15 doubles to 30 (>= 20 → KEPT) while a seed of 5 doubles to 10 (< 20 → DROPPED).
+    Workflow BuildPipeline()
     {
-        var probe = new ProbeExecutor();
-        return new WorkflowBuilder(probe).WithOutputFrom(probe).Build();
+        var ingest = new IngestExecutor();
+        var gate = new GateExecutor();
+        var keep = new KeepExecutor();
+        var drop = new DropExecutor();
+        return new WorkflowBuilder(ingest)
+            .AddEdge(ingest, gate)
+            .AddEdge(gate, keep, (int n) => n >= 20)
+            .AddEdge(gate, drop, (int n) => n < 20)
+            .WithOutputFrom(new ExecutorBinding[] { keep, drop })
+            .Build();
     }
 
+    // Runs the pipeline once for a seed and returns (final label, per-superstep checkpoints).
+    async Task<(string? Label, List<CheckpointInfo> Checkpoints)> RunOnce(int seed, CheckpointManager mgr)
+    {
+        StreamingRun run = await InProcessExecution.RunStreamingAsync(BuildPipeline(), seed, mgr);
+        string? label = null;
+        var checkpoints = new List<CheckpointInfo>();
+        await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+        {
+            if (Environment.GetEnvironmentVariable("WF_DEBUG") == "1")
+            {
+                string extra = evt switch
+                {
+                    WorkflowOutputEvent o => $" data={o.Data}",
+                    ExecutorInvokedEvent ei => $" exec={ei.ExecutorId}",
+                    ExecutorFailedEvent ef => $" exec={ef.ExecutorId} EX={ef.Data}",
+                    _ => "",
+                };
+                Console.WriteLine($"  evt: {evt.GetType().Name}{extra}");
+            }
+            switch (evt)
+            {
+                case WorkflowOutputEvent { Data: IngestOutcome outcome }:
+                    label = outcome.Label;
+                    break;
+                case SuperStepCompletedEvent { CompletionInfo.Checkpoint: { } cp }:
+                    checkpoints.Add(cp);
+                    break;
+            }
+        }
+        return (label, checkpoints);
+    }
+
+    // Both branches of the conditional must fire correctly — prove routing, not just that it runs.
     CheckpointManager manager = CheckpointManager.CreateInMemory();
+    (string? keptLabel, List<CheckpointInfo> keptCheckpoints) = await RunOnce(15, manager);
+    (string? droppedLabel, _) = await RunOnce(5, CheckpointManager.CreateInMemory());
 
-    // First run — capture the output and a checkpoint.
-    StreamingRun run = await InProcessExecution.RunStreamingAsync(BuildProbe(), "hello", manager);
-    string? output = null;
-    CheckpointInfo? checkpoint = null;
-    await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+    Console.WriteLine($"first run: seed 15 → {keptLabel}, seed 5 → {droppedLabel}, supersteps checkpointed={keptCheckpoints.Count}");
+    if (keptLabel != "KEPT:30")
     {
-        switch (evt)
-        {
-            case WorkflowOutputEvent outputEvent:
-                output = outputEvent.Data?.ToString();
-                break;
-            case SuperStepCompletedEvent step:
-                checkpoint = step.CompletionInfo?.Checkpoint ?? checkpoint;
-                break;
-        }
-    }
-
-    Console.WriteLine($"first run: output={output}, captured checkpoint={(checkpoint is null ? "none" : "yes")}");
-    if (output != "HELLO")
-    {
-        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — expected HELLO, got {output ?? "null"}.");
+        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — accept branch expected KEPT:30, got {keptLabel ?? "null"}.");
         return 1;
     }
-    if (checkpoint is null)
+    if (droppedLabel != "DROPPED:10")
     {
-        Console.Error.WriteLine("WORKFLOW SMOKE FAILED — no checkpoint was produced.");
+        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — reject branch expected DROPPED:10, got {droppedLabel ?? "null"}.");
+        return 1;
+    }
+    if (keptCheckpoints.Count < 2)
+    {
+        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — expected multiple superstep checkpoints, got {keptCheckpoints.Count}.");
         return 1;
     }
 
-    // Rehydrate a fresh workflow instance from the captured checkpoint. Bounded so a terminal
-    // checkpoint (this single-superstep probe) can't hang the smoke; the real multi-superstep
-    // kill-and-resume runs against DocumentIngestionWorkflow at M9.
-    try
+    // Resume the seed-15 run from its FIRST superstep boundary (non-terminal — gate + keep remain)
+    // into a fresh workflow instance and drain to completion. This is the mechanism M9's document
+    // crash-test relies on: resume mid-pipeline and finish. Bounded so a stall can't hang the smoke.
+    CheckpointInfo mid = keptCheckpoints[0];
+    string? resumedLabel = null;
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    StreamingRun resumed = await InProcessExecution.ResumeStreamingAsync(BuildPipeline(), mid, manager, timeout.Token);
+    await foreach (WorkflowEvent evt in resumed.WatchStreamAsync(timeout.Token))
     {
-        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
-        StreamingRun resumed = await InProcessExecution.ResumeStreamingAsync(BuildProbe(), checkpoint, manager, timeout.Token);
-        await foreach (WorkflowEvent evt in resumed.WatchStreamAsync(timeout.Token))
+        if (evt is WorkflowOutputEvent { Data: IngestOutcome outcome })
         {
-            // Draining confirms rehydration from the checkpoint succeeds without throwing.
+            resumedLabel = outcome.Label;
         }
-        Console.WriteLine("rehydrated from checkpoint: OK");
-    }
-    catch (OperationCanceledException)
-    {
-        Console.WriteLine("rehydrated from checkpoint: reached (drain bounded — terminal checkpoint has no further work)");
     }
 
-    Console.WriteLine("WORKFLOW SMOKE PASSED — workflow ran, produced output, checkpointed at the superstep boundary, and rehydrated.");
+    Console.WriteLine($"resumed from mid-pipeline checkpoint (superstep 1 of {keptCheckpoints.Count}): {resumedLabel}");
+    if (resumedLabel != "KEPT:30")
+    {
+        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — resume expected KEPT:30, got {resumedLabel ?? "null"}.");
+        return 1;
+    }
+
+    Console.WriteLine("WORKFLOW SMOKE PASSED — chain + conditional split routed both branches (KEPT/DROPPED), checkpointed each superstep, and resumed mid-pipeline to completion.");
     return 0;
 }
 
