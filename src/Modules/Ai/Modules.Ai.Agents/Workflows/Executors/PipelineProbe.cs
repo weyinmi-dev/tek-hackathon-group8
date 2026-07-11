@@ -48,3 +48,65 @@ public sealed partial class DropExecutor() : Executor("drop")
     public ValueTask<IngestOutcome> HandleAsync(int n, IWorkflowContext context)
         => ValueTask.FromResult(new IngestOutcome($"DROPPED:{n}"));
 }
+
+// ── Fan-out / stateful fan-in join (NetworkLogAnalysisWorkflow's shape) ──────────
+// split → (a ∥ b ∥ c) → join → sink. AddFanInBarrierEdge delivers a, b, c to the join
+// as three SEPARATE invocations, so the join must accumulate them. This probe answers the
+// open question of WHERE that accumulation can live: MAF is a superstep/BSP model, and it
+// determines whether IWorkflowContext state written in one invocation is visible to the next
+// invocation in the same superstep. The harness join smoke checks the emitted total against
+// the arithmetic, which only holds if accumulation actually works.
+public sealed record Partial(int Value);
+
+public sealed record Joined(int Total);
+
+public sealed partial class SplitExecutor() : Executor("split")
+{
+    [MessageHandler]
+    public ValueTask<int> HandleAsync(int seed, IWorkflowContext context)
+        => ValueTask.FromResult(seed);
+}
+
+public sealed partial class WorkerAExecutor() : Executor("worker-a")
+{
+    [MessageHandler]
+    public ValueTask<Partial> HandleAsync(int n, IWorkflowContext context)
+        => ValueTask.FromResult(new Partial(n));
+}
+
+public sealed partial class WorkerBExecutor() : Executor("worker-b")
+{
+    [MessageHandler]
+    public ValueTask<Partial> HandleAsync(int n, IWorkflowContext context)
+        => ValueTask.FromResult(new Partial(n * 2));
+}
+
+public sealed partial class WorkerCExecutor() : Executor("worker-c")
+{
+    [MessageHandler]
+    public ValueTask<Partial> HandleAsync(int n, IWorkflowContext context)
+        => ValueTask.FromResult(new Partial(n * 3));
+}
+
+// The join: accumulate `expected` partials via context state, then emit once. The handler RETURNS
+// the message (a nullable type) rather than calling SendMessageAsync — a void handler's send is not
+// declared to the workflow and gets dropped, whereas the return type declares the output. Returning
+// null on the partial invocations emits nothing; the final invocation returns the joined result.
+// Context state IS visible to later invocations within the same superstep (verified 2026-07-11), so
+// the running count/sum survive across the three barrier deliveries.
+public sealed partial class JoinExecutor(int expected) : Executor("join")
+{
+    [MessageHandler]
+    public async ValueTask<Joined?> HandleAsync(Partial part, IWorkflowContext context)
+    {
+        int count = await context.ReadStateAsync<int>("count") + 1;
+        int sum = await context.ReadStateAsync<int>("sum") + part.Value;
+        await context.QueueStateUpdateAsync("count", count);
+        await context.QueueStateUpdateAsync("sum", sum);
+        if (Environment.GetEnvironmentVariable("WF_DEBUG") == "1")
+        {
+            Console.WriteLine($"  [join] part={part.Value} -> count={count} sum={sum} (need {expected})");
+        }
+        return count >= expected ? new Joined(sum) : null;
+    }
+}

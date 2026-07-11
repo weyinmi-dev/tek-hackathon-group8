@@ -228,7 +228,44 @@ static async Task<int> RunWorkflowSmokeAsync()
         return 1;
     }
 
-    Console.WriteLine("WORKFLOW SMOKE PASSED — chain + conditional split routed both branches (KEPT/DROPPED), checkpointed each superstep, and resumed mid-pipeline to completion.");
+    // ── Fan-out + stateful fan-in join (NetworkLogAnalysisWorkflow's shape) ──
+    // split → (a ∥ b ∥ c) → join → sink. The join accumulates the three partials via context
+    // state and emits once. seed=5 → 5 + 10 + 15 = 30. A wrong/missing accumulation shows up as a
+    // total that isn't 30 (or no output at all), so this asserts the join mechanic end to end.
+    Workflow BuildJoin()
+    {
+        var split = new SplitExecutor();
+        var a = new WorkerAExecutor();
+        var b = new WorkerBExecutor();
+        var c = new WorkerCExecutor();
+        var join = new JoinExecutor(expected: 3);
+        return new WorkflowBuilder(split)
+            .AddFanOutEdge(split, new ExecutorBinding[] { a, b, c })
+            .AddFanInBarrierEdge(new ExecutorBinding[] { a, b, c }, join)
+            .WithOutputFrom(join)
+            .Build();
+    }
+
+    int? joinTotal = null;
+    using var joinTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    StreamingRun joinRun = await InProcessExecution.RunStreamingAsync(BuildJoin(), 5, CheckpointManager.CreateInMemory());
+    await foreach (WorkflowEvent evt in joinRun.WatchStreamAsync(joinTimeout.Token))
+    {
+        if (evt is WorkflowOutputEvent { Data: Joined joined })
+        {
+            joinTotal = joined.Total;
+        }
+    }
+
+    Console.WriteLine($"fan-in join: split(5) → (a∥b∥c) → join → {joinTotal}");
+    if (joinTotal != 30)
+    {
+        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — join expected 30 (5+10+15), got {(joinTotal?.ToString() ?? "null")}.");
+        return 1;
+    }
+
+    Console.WriteLine("WORKFLOW SMOKE PASSED — chain + conditional split routed both branches (KEPT/DROPPED), "
+        + "checkpointed each superstep, resumed mid-pipeline, and a stateful fan-in join accumulated 3 partials to 30.");
     return 0;
 }
 
