@@ -6,7 +6,6 @@ import { TopBar } from "@/components/TopBar";
 import { Btn, Card, Pill, Section } from "@/components/UI";
 import { useAuth } from "@/lib/auth";
 import { isAdmin, isEngineer, isManager } from "@/lib/rbac";
-import { isAdmin, isManager, isEngineer } from "@/lib/rbac";
 import { api } from "@/lib/api";
 import { downloadSampleTemplates } from "@/lib/sampleTemplates";
 import type {
@@ -34,6 +33,7 @@ const STATUS_TONE: Record<IndexingStatus, "ok" | "warn" | "crit" | "info" | "neu
   InProgress: "warn",
   Failed: "crit",
   Rejected: "neutral",
+  Cancelled: "neutral",
 };
 
 // Network-log file types that route to /api/network/ingest. Anything else
@@ -85,6 +85,16 @@ export default function DocumentsPage() {
 
   useEffect(() => { void refresh(); }, [page, debouncedSearch]);
 
+  // Ingestion is asynchronous (Phase 3 M9): an upload lands as Pending and transitions on its
+  // own (Pending → InProgress → Indexed / Failed / Rejected). While any row is still in flight,
+  // poll so the status updates without a manual refresh; stop once nothing is Pending/InProgress.
+  useEffect(() => {
+    const inFlight = docs.some(d => d.status === "Pending" || d.status === "InProgress");
+    if (!inFlight) return;
+    const timer = setInterval(() => { void refresh(); }, 3000);
+    return () => clearInterval(timer);
+  }, [docs]);
+
   const indexedCount = useMemo(() => docs.filter(d => d.status === "Indexed").length, [docs]);
   const totalSize = useMemo(() => docs.reduce((s, d) => s + d.sizeBytes, 0), [docs]);
 
@@ -108,7 +118,7 @@ export default function DocumentsPage() {
     <>
       <TopBar
         title="Knowledge"
-        sub={`${docs.length} docs · ${indexedCount} indexed · ${formatBytes(totalSize)} stored${runs.length ? ` · ${runs.length} pipeline run${runs.length === 1 ? "" : "s"} this session` : ""}`}
+        sub={`${total} documents · ${indexedCount} indexed · ${formatBytes(totalSize)} stored (current page)`}
         right={(
           <div style={{ display: "flex", gap: 6 }}>
             {isEngineer(user?.role) && (
@@ -122,18 +132,13 @@ export default function DocumentsPage() {
                 </Btn>
               </>
             )}
+            {isAdmin(user?.role) && <Btn onClick={() => onSync()} disabled={syncing}>{syncing ? "Syncing…" : "↻ Sync All"}</Btn>}
             {isManager(user?.role) && (
               <>
                 <Btn onClick={() => setLinkOpen(true)}>+ Link cloud</Btn>
-                <Btn onClick={() => setUploadOpen(true)}>+ Upload doc</Btn>
+                <Btn primary onClick={() => setUploadOpen(true)}>+ Upload (AI Verified)</Btn>
               </>
             )}
-        sub={`${total} documents · ${indexedCount} indexed · ${formatBytes(totalSize)} stored (current page)`}
-        right={isManager(user?.role) ? (
-          <div style={{ display: "flex", gap: 6 }}>
-            {isAdmin(user?.role) && <Btn onClick={() => onSync()} disabled={syncing}>{syncing ? "Syncing…" : "↻ Sync All"}</Btn>}
-            <Btn onClick={() => setLinkOpen(true)}>+ Link cloud</Btn>
-            <Btn primary onClick={() => setUploadOpen(true)}>+ Upload (AI Verified)</Btn>
           </div>
         )}
       />
@@ -151,52 +156,6 @@ export default function DocumentsPage() {
 
           <Section label="DOCUMENTS (RAG CORPUS)">
             <Card pad={0}>
-              <div style={{
-                padding: "12px 14px", borderBottom: "1px solid var(--line)",
-                display: "grid", gridTemplateColumns: "2.4fr .9fr 1fr 1fr 1fr 1fr 100px", gap: 10,
-                fontSize: 10, fontFamily: "var(--mono)", color: "var(--ink-3)",
-                letterSpacing: ".12em", textTransform: "uppercase",
-              }}>
-                <span>DOCUMENT</span><span>STATUS</span><span>SOURCE</span><span>CATEGORY</span><span>REGION</span><span>UPLOADED</span><span>ACTIONS</span>
-              </div>
-              {docs.length === 0 && (
-                <div style={{ padding: 20, textAlign: "center", color: "var(--ink-3)", fontSize: 12 }}>
-                  No documents yet. {isManager(user?.role) ? "Upload a runbook or link a cloud-stored SOP to get started." : "Ask a manager to upload one."}
-                </div>
-              )}
-              {docs.map((d, i) => (
-                <div key={d.id} style={{
-                  padding: "12px 14px",
-                  borderBottom: i < docs.length - 1 ? "1px solid var(--line)" : 0,
-                  display: "grid", gridTemplateColumns: "2.4fr .9fr 1fr 1fr 1fr 1fr 100px", gap: 10,
-                  alignItems: "center", fontSize: 12.5, color: "var(--ink)",
-                }}>
-                  <div>
-                    <div style={{ fontWeight: 500 }}>{d.title}</div>
-                    <div className="mono" style={{ fontSize: 10, color: "var(--ink-3)", marginTop: 1 }}>
-                      {d.fileName} · {formatBytes(d.sizeBytes)} · v{d.version}
-                    </div>
-                    {d.lastIndexError && (
-                      <div className="mono" style={{ fontSize: 10, color: "var(--crit)", marginTop: 2 }}>{d.lastIndexError}</div>
-                    )}
-                  </div>
-                  <Pill tone={STATUS_TONE[d.status]} dot>{d.status}</Pill>
-                  <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{d.source}</span>
-                  <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{d.category}</span>
-                  <span style={{ color: "var(--ink-2)", fontSize: 11 }}>{d.region}</span>
-                  <span className="mono" style={{ fontSize: 10.5, color: "var(--ink-3)" }}>
-                    {new Date(d.uploadedAtUtc).toLocaleDateString()}
-                  </span>
-                  <div style={{ display: "flex", gap: 4, justifyContent: "flex-end" }}>
-                    {isManager(user?.role) && <Btn small onClick={() => onReindex(d.id)}>↻</Btn>}
-                    {isAdmin(user?.role) && <Btn small style={{ color: "var(--crit)" }} onClick={() => onDelete(d.id, d.title)}>×</Btn>}
-                  </div>
-                </div>
-              ))}
-            </Card>
-          </Section>
-        </div>
-        <Card pad={0}>
           <div style={{ padding: "12px 14px", borderBottom: "1px solid var(--line)", background: "var(--bg-2)", borderTopLeftRadius: 6, borderTopRightRadius: 6 }}>
             <input 
               style={{ width: "100%", maxWidth: 300, padding: "6px 10px", borderRadius: 4, border: "1px solid var(--line-2)", background: "var(--bg-1)", color: "var(--ink)", fontSize: 12, fontFamily: "var(--mono)" }} 
@@ -272,6 +231,8 @@ export default function DocumentsPage() {
             </div>
           )}
         </Card>
+          </Section>
+        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           <Section label="STORAGE PROVIDERS">
@@ -292,8 +253,6 @@ export default function DocumentsPage() {
                 Cloud providers list as &ldquo;placeholder&rdquo; until an SDK adapter is wired in
                 Modules.Ai.Infrastructure → DocumentStorageRegistry. The OneDrive log-fetch flow
                 below works today via direct-download share links.
-                Cloud providers list as &ldquo;not connected&rdquo; until an SDK adapter is wired in
-                Modules.Ai.Infrastructure &rarr; DocumentStorageRegistry.
               </div>
             </Card>
           </Section>

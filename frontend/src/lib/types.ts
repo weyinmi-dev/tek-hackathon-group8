@@ -200,7 +200,7 @@ export type DocumentSource =
   | "AzureBlob"
   | "WebLink";
 
-export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed" | "Rejected";
+export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed" | "Rejected" | "Cancelled";
 
 export type DocumentListItem = {
   id: string;
