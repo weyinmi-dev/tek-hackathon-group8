@@ -83,7 +83,9 @@ public sealed class Documents : IEndpoint
                 Tags: SplitTags(tagsRaw),
                 UploadedBy: actor), ct);
 
-            return result.Match(v => Results.Created($"/api/documents/{v.Id}", v), CustomResults.Problem);
+            // 202 Accepted: the document is stored and its ingestion is queued (async, off the
+            // outbox), not finished. The row starts Pending and transitions as the workflow runs.
+            return result.Match(v => Results.Accepted($"/api/documents/{v.Id}", v), CustomResults.Problem);
         })
         .WithTags(Tags.Documents)
         .DisableAntiforgery();

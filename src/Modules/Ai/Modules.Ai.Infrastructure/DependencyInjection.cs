@@ -106,6 +106,8 @@ public static class DependencyInjection
         // are provisioned and the port resolves.
         services.AddScoped<Modules.Ai.Application.Workflows.IWorkflowCheckpointStore,
             Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore>();
+        services.AddScoped<Modules.Ai.Application.Abstractions.IOutboxWriter,
+            Modules.Ai.Infrastructure.Outbox.OutboxWriter>();
         services.AddHostedService<Modules.Ai.Infrastructure.Outbox.OutboxProcessor>();
 
         // Bind AiOptions through IOptions so the OSM layer (and anything else that needs the
