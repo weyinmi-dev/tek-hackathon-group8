@@ -403,6 +403,8 @@ static async Task<int> RunAgentSmokeAsync()
 
     AIAgent agent = new OperationsCopilotAgentBuilder(
         chat,
+        new Modules.Ai.Agents.Memory.PostgresChatHistoryProvider(sender),
+        new Modules.Ai.Agents.Memory.KnowledgeContextProvider(sender),
         new NetworkTools(sender),
         new AlertTools(sender),
         new EnergyTools(sender),
@@ -560,7 +562,22 @@ internal sealed class ThrowingSender : ISender
     private static InvalidOperationException Unexpected()
         => new("A tool was dispatched during the offline agent smoke test — not expected.");
 
-    public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default) => throw Unexpected();
+    public Task<TResponse> Send<TResponse>(IRequest<TResponse> request, CancellationToken cancellationToken = default)
+    {
+        // The copilot's memory providers ground/hydrate each turn: KnowledgeContextProvider runs
+        // SearchKnowledgeQuery and PostgresChatHistoryProvider (given a conversation) runs
+        // GetConversationMessagesQuery. Return empty so the offline smoke exercises them without a
+        // database; an actual TOOL dispatch (network/alert/energy) is still unexpected offline.
+        object result = request switch
+        {
+            Modules.Ai.Application.Knowledge.SearchKnowledgeQuery =>
+                SharedKernel.Result.Success<IReadOnlyList<Modules.Ai.Application.Knowledge.KnowledgeHitDto>>([]),
+            Modules.Ai.Application.Copilot.Conversations.GetConversationMessagesQuery =>
+                SharedKernel.Result.Success<IReadOnlyList<Modules.Ai.Application.Copilot.Conversations.ConversationMessageDto>>([]),
+            _ => throw Unexpected(),
+        };
+        return Task.FromResult((TResponse)result);
+    }
     public Task<object?> Send(object request, CancellationToken cancellationToken = default) => throw Unexpected();
     public Task Send<TRequest>(TRequest request, CancellationToken cancellationToken = default) where TRequest : IRequest => throw Unexpected();
     public IAsyncEnumerable<TResponse> CreateStream<TResponse>(IStreamRequest<TResponse> request, CancellationToken cancellationToken = default) => throw Unexpected();

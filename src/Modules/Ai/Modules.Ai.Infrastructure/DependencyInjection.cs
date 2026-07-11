@@ -1,6 +1,7 @@
 using System.ClientModel;
 using Azure.AI.OpenAI;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
@@ -47,6 +48,9 @@ using Modules.Network.Application.Ingestion.Stage2_Analyze;
 using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
 using SharedKernel;
 using Microsoft.SemanticKernel.Connectors.AzureOpenAI;
+// Microsoft.Extensions.AI also declares an IEmbeddingGenerator; alias the unqualified name to the
+// module's RAG embedding port so existing registrations stay unambiguous.
+using IEmbeddingGenerator = Modules.Ai.Application.Rag.Embeddings.IEmbeddingGenerator;
 
 namespace Modules.Ai.Infrastructure;
 
@@ -128,13 +132,22 @@ public static class DependencyInjection
         AddOsmLayer(services, configuration);
         AddMcpPluginLayer(services);
 
-        // MAF document-ingestion workflow (Phase 3 M9). The offline/Mock stack uses the deterministic
-        // chat client for the intake gate; the Azure IChatClient is wired at M11 (copilot cutover).
-        // The host is registered explicitly because MediatR scans the Application assembly, not this
-        // one — it reacts to DocumentUploaded and runs the workflow with Postgres checkpointing (D6).
-        services.AddSingleton<Microsoft.Extensions.AI.IChatClient, Modules.Ai.Agents.Infrastructure.DeterministicChatClient>();
+        // MAF agents — document ingestion (M9) + operations copilot (M11). IChatClient is registered
+        // per provider inside the branches below (Azure when configured, else the deterministic client)
+        // and is shared by both agents. Tools, memory providers, and agent builders are
+        // provider-agnostic, so they register once here.
+        services.AddScoped<Modules.Ai.Agents.Tools.NetworkTools>();
+        services.AddScoped<Modules.Ai.Agents.Tools.AlertTools>();
+        services.AddScoped<Modules.Ai.Agents.Tools.EnergyTools>();
+        services.AddScoped<Modules.Ai.Agents.Tools.KnowledgeTools>();
+        services.AddScoped<Modules.Ai.Agents.Tools.DocumentTools>();
+        services.AddScoped<Modules.Ai.Agents.Memory.PostgresChatHistoryProvider>();
+        services.AddScoped<Modules.Ai.Agents.Memory.KnowledgeContextProvider>();
         services.AddScoped<Modules.Ai.Agents.Agents.DocumentIntakeAgentBuilder>();
+        services.AddScoped<Modules.Ai.Agents.Agents.OperationsCopilotAgentBuilder>();
         services.AddScoped<Modules.Ai.Agents.Workflows.DocumentIngestion.DocumentIngestionWorkflowBuilder>();
+        services.AddScoped<Modules.Ai.Application.Copilot.AskCopilot.ICopilotAgent,
+            Modules.Ai.Infrastructure.Copilot.OperationsCopilotAgentRunner>();
         services.AddScoped<MediatR.INotificationHandler<global::Application.Abstractions.Events.DocumentUploaded>,
             Modules.Ai.Infrastructure.Hosting.DocumentIngestionWorkflowHost>();
 
@@ -181,7 +194,15 @@ public static class DependencyInjection
                 return k;
             });
             services.AddScoped(sp => sp.GetRequiredService<Kernel>().GetRequiredService<Microsoft.SemanticKernel.ChatCompletion.IChatCompletionService>());
-            services.AddScoped<ICopilotOrchestrator, SemanticKernelOrchestrator>();
+
+            // MAF copilot chat client (Phase 3 M11): the Azure OpenAI chat model exposed as a
+            // Microsoft.Extensions.AI IChatClient. Shared by the copilot and document-intake agents.
+            services.AddSingleton<Microsoft.Extensions.AI.IChatClient>(_ =>
+                new Azure.AI.OpenAI.AzureOpenAIClient(
+                        new Uri(normalizedEndpoint),
+                        new System.ClientModel.ApiKeyCredential(ai.AzureOpenAi.ApiKey))
+                    .GetChatClient(ai.AzureOpenAi.Deployment)
+                    .AsIChatClient());
 
             // Stage 2 — three SK skills + the wrapper that composes/validates/retries them.
             // Skills are NOT added to Kernel.Plugins because the analyzer invokes them
@@ -195,7 +216,9 @@ public static class DependencyInjection
         }
         else
         {
-            services.AddScoped<ICopilotOrchestrator, MockCopilotOrchestrator>();
+            // Offline copilot + document-intake chat client — the deterministic client (M11); the
+            // copilot answers offline instead of needing a live model.
+            services.AddSingleton<Microsoft.Extensions.AI.IChatClient, Modules.Ai.Agents.Infrastructure.DeterministicChatClient>();
 
             // Heuristic Stage-2 fallback: lets the pipeline run end-to-end without an Azure
             // OpenAI key. Required by the demo + by deterministic integration tests.

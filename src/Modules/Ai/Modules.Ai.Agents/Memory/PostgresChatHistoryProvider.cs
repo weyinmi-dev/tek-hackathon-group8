@@ -21,6 +21,9 @@ public sealed class PostgresChatHistoryProvider(ISender sender) : ChatHistoryPro
     /// <summary>StateBag key under which the caller stores this session's conversation id.</summary>
     public const string ConversationIdKey = "ai.conversationId";
 
+    /// <summary>Serializer options for StateBag get/set — the caller and this provider must share them.</summary>
+    public static readonly System.Text.Json.JsonSerializerOptions StateBagJson = new(System.Text.Json.JsonSerializerDefaults.Web);
+
     protected override async ValueTask<IEnumerable<ChatMessage>> ProvideChatHistoryAsync(
         InvokingContext context,
         CancellationToken cancellationToken = default)
@@ -38,43 +41,25 @@ public sealed class PostgresChatHistoryProvider(ISender sender) : ChatHistoryPro
             : [];
     }
 
-    protected override async ValueTask StoreChatHistoryAsync(
+    protected override ValueTask StoreChatHistoryAsync(
         InvokedContext context,
         CancellationToken cancellationToken = default)
     {
-        // ResponseMessages is null when the invocation failed — nothing to persist.
-        if (context.ResponseMessages is null || !TryGetConversationId(context.Session, out Guid conversationId))
-        {
-            return;
-        }
-
-        // Persist the new exchange only. ProvideChatHistoryAsync already loaded the prior turns, so
-        // the delta is: the user message that triggered this turn (the last user message in the
-        // accumulated input) plus the assistant response(s). The M10 call site must not also persist
-        // the user turn, or it would double-store.
-        var turns = new List<ConversationTurn>();
-        ChatMessage? newUserMessage = context.RequestMessages.LastOrDefault(m => m.Role == ChatRole.User);
-        if (newUserMessage is not null && !string.IsNullOrWhiteSpace(newUserMessage.Text))
-        {
-            turns.Add(new ConversationTurn(newUserMessage.Role.Value, newUserMessage.Text));
-        }
-
-        turns.AddRange(context.ResponseMessages
-            .Where(m => !string.IsNullOrWhiteSpace(m.Text))
-            .Select(m => new ConversationTurn(m.Role.Value, m.Text)));
-
-        if (turns.Count > 0)
-        {
-            await sender.Send(new AppendMessagesCommand(conversationId, turns), cancellationToken);
-        }
+        // Intentionally a no-op. In the copilot flow the caller (AskCopilotCommandHandler) persists
+        // each turn itself: the assistant message carries provider/confidence/skill-trace metadata
+        // the raw model response doesn't, and the caller owns the conversation activity + the EF
+        // concurrency workaround. Storing here too would double-write. This provider's role is to
+        // LOAD prior turns (ProvideChatHistoryAsync) so history reaches the model; the caller persists.
+        return ValueTask.CompletedTask;
     }
 
     private static bool TryGetConversationId(AgentSession? session, out Guid conversationId)
     {
         conversationId = Guid.Empty;
-        if (session?.StateBag.TryGetValue(ConversationIdKey, out object? raw) == true && raw is Guid id)
+        if (session is not null
+            && session.StateBag.TryGetValue(ConversationIdKey, out string? raw, StateBagJson)
+            && Guid.TryParse(raw, out conversationId))
         {
-            conversationId = id;
             return true;
         }
 
