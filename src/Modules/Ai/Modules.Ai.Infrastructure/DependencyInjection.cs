@@ -237,13 +237,10 @@ public static class DependencyInjection
         services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
         services.AddScoped<IMcpInvoker, McpInvoker>();
 
-        // FileMcpClient starts the @modelcontextprotocol/server-filesystem subprocess ONCE at
-        // startup and caches the resulting KernelFunction list. The hosted service triggers
-        // initialization; the kernel factory reads the cached list synchronously (no blocking,
-        // no per-request process spawning). If npx or the package is unavailable, the FS plugin
-        // is simply absent and nothing else breaks.
-        services.AddSingleton<FileMcpClient>();
-        services.AddHostedService<FileMcpClientInitializer>();
+        // FileMcpClient is gone (Phase 3 M13, D4): it existed only to hand KernelFunctions to the
+        // Semantic Kernel factory, which M12 deleted — so it was spawning an `npx`
+        // @modelcontextprotocol/server-filesystem Node subprocess at every startup for nothing.
+        // Document lookup for the copilot now goes through DocumentTools/SearchDocuments.
     }
 
     /// <summary>
