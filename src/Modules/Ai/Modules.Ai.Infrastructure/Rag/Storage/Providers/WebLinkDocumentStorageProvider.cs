@@ -1,4 +1,5 @@
-using Modules.Ai.Application.Rag.Storage;
+using SharedKernel;
+using Application.Abstractions.Storage;
 using Modules.Ai.Domain.Documents;
 
 namespace Modules.Ai.Infrastructure.Rag.Storage.Providers;

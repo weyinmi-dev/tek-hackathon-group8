@@ -1,4 +1,4 @@
-namespace Modules.Ai.Domain.Documents;
+namespace SharedKernel;
 
 /// <summary>
 /// Where a managed document originated. Drives the storage provider that owns the

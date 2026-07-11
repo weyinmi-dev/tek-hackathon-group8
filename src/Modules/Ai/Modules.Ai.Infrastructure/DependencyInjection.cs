@@ -17,7 +17,6 @@ using Modules.Ai.Application.Rag.Embeddings;
 using Modules.Ai.Application.Rag.Indexing;
 using Modules.Ai.Application.Rag.Ingestion;
 using Modules.Ai.Application.Rag.Retrievers;
-using Modules.Ai.Application.Rag.Storage;
 using Modules.Ai.Application.Rag.Stores;
 using Modules.Ai.Application.SemanticKernel;
 using Modules.Ai.Domain;

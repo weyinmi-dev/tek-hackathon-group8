@@ -1,5 +1,6 @@
+using SharedKernel;
 using System.Collections.ObjectModel;
-using Modules.Ai.Application.Rag.Storage;
+using Application.Abstractions.Storage;
 using Modules.Ai.Domain.Documents;
 
 namespace Modules.Ai.Infrastructure.Rag.Storage;

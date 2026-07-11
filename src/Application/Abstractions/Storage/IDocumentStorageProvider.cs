@@ -1,6 +1,6 @@
-using Modules.Ai.Domain.Documents;
+using SharedKernel;
 
-namespace Modules.Ai.Application.Rag.Storage;
+namespace Application.Abstractions.Storage;
 
 /// <summary>
 /// Provider-agnostic facade over a document store (local disk, Google Drive, OneDrive,

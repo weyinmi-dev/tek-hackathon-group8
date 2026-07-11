@@ -1,6 +1,6 @@
-using Modules.Ai.Domain.Documents;
+using SharedKernel;
 
-namespace Modules.Ai.Application.Rag.Storage;
+namespace Application.Abstractions.Storage;
 
 /// <summary>
 /// Resolves the right <see cref="IDocumentStorageProvider"/> for a given

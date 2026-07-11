@@ -1,4 +1,4 @@
-namespace Modules.Ai.Application.Rag.Storage;
+namespace Application.Abstractions.Storage;
 
 /// <summary>
 /// Provider-agnostic descriptor returned after a write completes. <c>StorageKey</c>

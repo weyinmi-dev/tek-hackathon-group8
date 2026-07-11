@@ -1,3 +1,4 @@
+using SharedKernel;
 using Application.Abstractions.Messaging;
 using Modules.Ai.Domain.Documents;
 using Modules.Ai.Domain.Knowledge;

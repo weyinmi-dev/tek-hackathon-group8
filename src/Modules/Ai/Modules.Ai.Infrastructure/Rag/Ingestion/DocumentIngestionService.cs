@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using Modules.Ai.Application.Rag.Indexing;
 using Modules.Ai.Application.Rag.Ingestion;
 using Modules.Ai.Application.Rag.Models;
-using Modules.Ai.Application.Rag.Storage;
+using Application.Abstractions.Storage;
 using Modules.Ai.Domain;
 using Modules.Ai.Domain.Documents;
 using Modules.Network.Application.Ingestion.Pipeline;

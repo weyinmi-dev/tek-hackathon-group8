@@ -7,7 +7,7 @@ using Modules.Ai.Application.Documents.ListDocuments;
 using Modules.Ai.Application.Documents.ReindexDocument;
 using Modules.Ai.Application.Documents.SyncDocuments;
 using Modules.Ai.Application.Documents.UploadDocument;
-using Modules.Ai.Application.Rag.Storage;
+using Application.Abstractions.Storage;
 using Modules.Ai.Domain.Documents;
 using Modules.Ai.Domain.Knowledge;
 using Modules.Identity.Application.Authorization;

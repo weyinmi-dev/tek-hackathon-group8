@@ -5,7 +5,7 @@ using Modules.Ai.Application.Ingestion;
 using Modules.Ai.Application.Rag.Chunking;
 using Modules.Ai.Application.Rag.Embeddings;
 using Modules.Ai.Application.Rag.Ingestion;
-using Modules.Ai.Application.Rag.Storage;
+using Application.Abstractions.Storage;
 using Pgvector;
 using SharedKernel;
 

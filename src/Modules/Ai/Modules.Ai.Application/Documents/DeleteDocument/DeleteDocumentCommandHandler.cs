@@ -1,6 +1,6 @@
 using Application.Abstractions.Messaging;
 using Microsoft.Extensions.Logging;
-using Modules.Ai.Application.Rag.Storage;
+using Application.Abstractions.Storage;
 using Modules.Ai.Domain;
 using Modules.Ai.Domain.Documents;
 using SharedKernel;

@@ -1,3 +1,4 @@
+using SharedKernel;
 namespace Application.Abstractions.Events;
 
 /// <summary>
