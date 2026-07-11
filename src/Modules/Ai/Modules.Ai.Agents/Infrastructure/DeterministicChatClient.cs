@@ -22,7 +22,7 @@ public sealed class DeterministicChatClient : IChatClient
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
-        var reply = new ChatMessage(ChatRole.Assistant, BuildReply(messages));
+        var reply = new ChatMessage(ChatRole.Assistant, BuildReply(messages, options));
         return Task.FromResult(new ChatResponse(reply));
     }
 
@@ -31,7 +31,7 @@ public sealed class DeterministicChatClient : IChatClient
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        yield return new ChatResponseUpdate(ChatRole.Assistant, BuildReply(messages));
+        yield return new ChatResponseUpdate(ChatRole.Assistant, BuildReply(messages, options));
         await Task.CompletedTask;
     }
 
@@ -46,7 +46,7 @@ public sealed class DeterministicChatClient : IChatClient
         // Nothing to release — the deterministic client holds no resources.
     }
 
-    private static string BuildReply(IEnumerable<ChatMessage> messages)
+    private static string BuildReply(IEnumerable<ChatMessage> messages, ChatOptions? options)
     {
         List<ChatMessage> all = messages.ToList();
 
@@ -54,9 +54,19 @@ public sealed class DeterministicChatClient : IChatClient
         // answer as that gatekeeper so offline uploads still reach Indexed instead of being
         // rejected for want of a model. Without this, DocumentIngestionWorkflow's ValidateRelevance
         // reads "OFFLINE MODE" as not-relevant and rejects every document in an offline stack.
-        string joined = string.Join("\n", all.Select(m => m.Text));
-        if (joined.Contains("RELEVANT or IRRELEVANT", StringComparison.OrdinalIgnoreCase)
-            || joined.Contains("quality-control gatekeeper", StringComparison.OrdinalIgnoreCase))
+        // AsAIAgent supplies the agent's instructions via ChatOptions.Instructions, NOT as a
+        // message, so the gate marker is searched there as well as in the messages.
+        string messageText = string.Join("\n", all.Select(m => m.Text));
+        string context = messageText + "\n" + (options?.Instructions ?? string.Empty);
+        // The gatekeeper markers live in the agent instructions (via ChatOptions.Instructions); the
+        // "File: … Category: …" shape is what ValidateRelevanceExecutor puts in the user message and
+        // is always present regardless of how instructions are threaded — either is enough.
+        bool isIntakeGate =
+            context.Contains("RELEVANT or IRRELEVANT", StringComparison.OrdinalIgnoreCase)
+            || context.Contains("quality-control gatekeeper", StringComparison.OrdinalIgnoreCase)
+            || (messageText.Contains("File:", StringComparison.OrdinalIgnoreCase)
+                && messageText.Contains("Category:", StringComparison.OrdinalIgnoreCase));
+        if (isIntakeGate)
         {
             return "RELEVANT\nOffline mode: accepted without model review.";
         }
