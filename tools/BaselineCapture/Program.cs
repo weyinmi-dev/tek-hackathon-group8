@@ -60,6 +60,9 @@ using AnalyticsUow = Modules.Analytics.Domain.IUnitOfWork;
 using NetworkUowImpl = Modules.Network.Infrastructure.Database.UnitOfWork;
 using AlertsUowImpl = Modules.Alerts.Infrastructure.Database.UnitOfWork;
 using AnalyticsUowImpl = Modules.Analytics.Infrastructure.Database.UnitOfWork;
+using Npgsql;
+using Pgvector;
+using Pgvector.EntityFrameworkCore;
 
 string mode = args.Length > 0 ? args[0].ToLowerInvariant() : "capture";
 string repoRoot = Directory.GetCurrentDirectory();
@@ -80,6 +83,14 @@ if (mode == "agent")
 if (mode == "workflow")
 {
     return await RunWorkflowSmokeAsync();
+}
+
+// M9 durability foundation — proves the M5 Postgres checkpoint store round-trips against a real
+// pgvector database (the Aspire dev stack). Needs AI_PG_CONN set to that connection string; the
+// sandbox's Testcontainers postgres has no pgvector, so this mode targets the live Aspire DB.
+if (mode == "dbcheckpoint")
+{
+    return await RunDbCheckpointSmokeAsync();
 }
 
 if (!Directory.Exists(fixtureDir))
@@ -266,6 +277,121 @@ static async Task<int> RunWorkflowSmokeAsync()
 
     Console.WriteLine("WORKFLOW SMOKE PASSED — chain + conditional split routed both branches (KEPT/DROPPED), "
         + "checkpointed each superstep, resumed mid-pipeline, and a stateful fan-in join accumulated 3 partials to 30.");
+    return 0;
+}
+
+// ── M9 durability foundation: Postgres checkpoint store round-trip ────────────
+static async Task<int> RunDbCheckpointSmokeAsync()
+{
+    string? conn = Environment.GetEnvironmentVariable("AI_PG_CONN");
+    if (string.IsNullOrWhiteSpace(conn))
+    {
+        Console.Error.WriteLine("DBCHECKPOINT SKIPPED — set AI_PG_CONN to the Aspire postgres connection string.");
+        return 2;
+    }
+
+    // Mirror Ai.Infrastructure's DI: a pgvector-aware data source, snake_case AiDbContext.
+    var dsb = new Npgsql.NpgsqlDataSourceBuilder(conn);
+    dsb.UseVector();
+    await using Npgsql.NpgsqlDataSource dataSource = dsb.Build();
+
+    Modules.Ai.Infrastructure.Database.AiDbContext NewContext() => new(
+        new DbContextOptionsBuilder<Modules.Ai.Infrastructure.Database.AiDbContext>()
+            .UseNpgsql(dataSource, npg => npg.UseVector())
+            .UseSnakeCaseNamingConvention()
+            .Options,
+        new Modules.Ai.Application.Rag.RagOptions());
+
+    string runId = "verif-" + Guid.NewGuid().ToString("N")[..8];
+
+    // (1) Direct C# round-trip of the M5 store — Save (with a parent) → Load → List.
+    await using (Modules.Ai.Infrastructure.Database.AiDbContext db = NewContext())
+    {
+        var store = new Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore(db);
+        string cp1 = await store.SaveAsync(runId, "{\"step\":1}", null);
+        string cp2 = await store.SaveAsync(runId, "{\"step\":2}", cp1);
+        string? loaded = await store.LoadAsync(runId, cp2);
+        IReadOnlyList<Modules.Ai.Application.Workflows.WorkflowCheckpointRef> refs = await store.ListAsync(runId, null);
+        Console.WriteLine($"store round-trip: loaded cp2 payload={loaded}, listed {refs.Count} checkpoints");
+        if (loaded != "{\"step\":2}" || refs.Count < 2)
+        {
+            Console.Error.WriteLine($"DBCHECKPOINT FAILED — store round-trip: payload={loaded ?? "null"}, refs={refs.Count}.");
+            return 1;
+        }
+    }
+
+    // (2) A real workflow checkpointed to Postgres, then resumed across a FRESH store instance —
+    // proving the checkpoint was rehydrated from the database, not from an in-memory manager.
+    Workflow BuildChain()
+    {
+        var ingest = new IngestExecutor();
+        var gate = new GateExecutor();
+        var keep = new KeepExecutor();
+        var drop = new DropExecutor();
+        return new WorkflowBuilder(ingest)
+            .AddEdge(ingest, gate)
+            .AddEdge(gate, keep, (int n) => n >= 20)
+            .AddEdge(gate, drop, (int n) => n < 20)
+            .WithOutputFrom(new ExecutorBinding[] { keep, drop })
+            .Build();
+    }
+
+    CheckpointInfo? mid = null;
+    await using (Modules.Ai.Infrastructure.Database.AiDbContext db = NewContext())
+    {
+        var pgStore = new Modules.Ai.Agents.Workflows.PostgresCheckpointStore(
+            new Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore(db));
+        CheckpointManager manager = CheckpointManager.CreateJson(pgStore);
+        StreamingRun run = await InProcessExecution.RunStreamingAsync(BuildChain(), 15, manager);
+        await foreach (WorkflowEvent evt in run.WatchStreamAsync())
+        {
+            if (evt is SuperStepCompletedEvent { CompletionInfo.Checkpoint: { } cp })
+            {
+                mid ??= cp; // the first (non-terminal) superstep boundary
+            }
+        }
+    }
+
+    if (mid is null)
+    {
+        Console.Error.WriteLine("DBCHECKPOINT FAILED — the workflow persisted no checkpoint.");
+        return 1;
+    }
+
+    string? resumedLabel = null;
+    using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+    await using (Modules.Ai.Infrastructure.Database.AiDbContext db = NewContext())
+    {
+        var pgStore = new Modules.Ai.Agents.Workflows.PostgresCheckpointStore(
+            new Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore(db));
+        CheckpointManager manager = CheckpointManager.CreateJson(pgStore);
+        StreamingRun resumed = await InProcessExecution.ResumeStreamingAsync(BuildChain(), mid, manager, timeout.Token);
+        await foreach (WorkflowEvent evt in resumed.WatchStreamAsync(timeout.Token))
+        {
+            if (evt is WorkflowOutputEvent { Data: IngestOutcome outcome })
+            {
+                resumedLabel = outcome.Label;
+            }
+        }
+    }
+
+    // Tidy up the rows this smoke wrote.
+    await using (var cleanup = dataSource.CreateCommand(
+        "DELETE FROM ai.workflow_checkpoints WHERE run_id = @r OR run_id LIKE 'verif-%'"))
+    {
+        cleanup.Parameters.AddWithValue("r", mid.SessionId);
+        await cleanup.ExecuteNonQueryAsync();
+    }
+
+    Console.WriteLine($"resumed from Postgres-persisted checkpoint (fresh store instance): {resumedLabel}");
+    if (resumedLabel != "KEPT:30")
+    {
+        Console.Error.WriteLine($"DBCHECKPOINT FAILED — resume from Postgres expected KEPT:30, got {resumedLabel ?? "null"}.");
+        return 1;
+    }
+
+    Console.WriteLine("DBCHECKPOINT PASSED — M5 store round-trips, and a workflow checkpointed to Postgres "
+        + "resumed to completion from a FRESH store instance (durable persistence, not in-memory).");
     return 0;
 }
 
