@@ -5,7 +5,7 @@ import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, Pill, Section } from "@/components/UI";
 import { useAuth } from "@/lib/auth";
-import { isAdmin, isEngineer, isManager } from "@/lib/rbac";
+import { isEngineer, isManager } from "@/lib/rbac";
 import { api } from "@/lib/api";
 import { downloadSampleTemplates } from "@/lib/sampleTemplates";
 import type {
@@ -59,7 +59,6 @@ export default function DocumentsPage() {
   // Recent ingestion runs from the current session — the backend doesn't yet
   // expose GET /analytics/ingestion-runs, so this is in-memory only.
   const [runs, setRuns] = useState<RunRecord[]>([]);
-  const [syncing, setSyncing] = useState(false);
   const [deleteDoc, setDeleteDoc] = useState<DocumentListItem | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -127,18 +126,6 @@ export default function DocumentsPage() {
   const onDeleteClick = (d: DocumentListItem) => {
     setDeleteDoc(d);
   };
-  const onSync = async () => {
-    setSyncing(true);
-    try {
-      await api.syncDocuments();
-      await refresh();
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const recordRun = (run: RunRecord) =>
     setRuns((prev) => [run, ...prev].slice(0, 8));
 
@@ -161,11 +148,6 @@ export default function DocumentsPage() {
                   ↓ Sample template
                 </Btn>
               </>
-            )}
-            {isAdmin(user?.role) && (
-              <Btn onClick={() => onSync()} disabled={syncing}>
-                {syncing ? "Syncing…" : "↻ Sync All"}
-              </Btn>
             )}
             {isManager(user?.role) && (
               <>

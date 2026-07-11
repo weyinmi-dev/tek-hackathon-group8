@@ -7,9 +7,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Application.Abstractions.Storage;
-using Modules.Ai.Application.Mcp.Clients;
-using Modules.Ai.Application.Mcp.Contracts;
-using Modules.Ai.Application.Mcp.Registry;
 using Modules.Ai.Application.Rag;
 using Modules.Ai.Application.Rag.Chunking;
 using Modules.Ai.Application.Rag.Documents;
@@ -25,8 +22,6 @@ using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database;
 using Modules.Ai.Infrastructure.Mcp.Clients;
 using Modules.Ai.Infrastructure.Mcp.Osm;
-using Modules.Ai.Infrastructure.Mcp.Plugins;
-using Modules.Ai.Infrastructure.Mcp.Registry;
 using Modules.Ai.Infrastructure.Rag.Chunking;
 using Modules.Ai.Infrastructure.Rag.Embeddings;
 using Modules.Ai.Infrastructure.Rag.Indexing;
@@ -123,7 +118,6 @@ public static class DependencyInjection
         AddRagPipeline(services, rag, configuration);
         AddDocumentPipeline(services, configuration);
         AddOsmLayer(services, configuration);
-        AddMcpPluginLayer(services);
 
         // MAF agents — document ingestion (M9) + operations copilot (M11). IChatClient is registered
         // per provider inside the branches below (Azure when configured, else the deterministic client)
@@ -224,25 +218,6 @@ public static class DependencyInjection
         }
     }
 
-    private static void AddMcpPluginLayer(IServiceCollection services)
-    {
-        // Built-in plugins are scoped because they consume scoped module APIs (DbContext-bound).
-        // Add new plugins by registering an additional IMcpPlugin — they'll show up in the
-        // registry and the discovery endpoint automatically.
-        services.AddScoped<IMcpPlugin, NetworkMcpPlugin>();
-        services.AddScoped<IMcpPlugin, AlertsMcpPlugin>();
-        services.AddScoped<IMcpPlugin, EnergyMcpPlugin>();
-        services.AddScoped<IMcpPlugin, OsmMcpPlugin>();
-
-        services.AddScoped<IMcpPluginRegistry, McpPluginRegistry>();
-        services.AddScoped<IMcpInvoker, McpInvoker>();
-
-        // FileMcpClient is gone (Phase 3 M13, D4): it existed only to hand KernelFunctions to the
-        // Semantic Kernel factory, which M12 deleted — so it was spawning an `npx`
-        // @modelcontextprotocol/server-filesystem Node subprocess at every startup for nothing.
-        // Document lookup for the copilot now goes through DocumentTools/SearchDocuments.
-    }
-
     /// <summary>
     /// OpenStreetMap geospatial layer. Wraps the same public APIs the upstream
     /// <see href="https://github.com/jagan-shanmugam/open-streetmap-mcp">jagan-shanmugam OSM MCP server</see>
@@ -309,7 +284,6 @@ public static class DependencyInjection
         // operator is ready to enable that source — no changes required to the ingestion
         // pipeline or the document handlers.
         services.AddSingleton<IDocumentStorageProvider, GoogleDriveDocumentStorageProvider>();
-        // services.AddSingleton<IDocumentStorageProvider, OneDriveDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, SharePointDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, AzureBlobDocumentStorageProvider>();
         services.AddSingleton<IDocumentStorageProvider, WebLinkDocumentStorageProvider>();
@@ -329,7 +303,6 @@ public static class DependencyInjection
         // still serves the legacy DocumentIngestionService path (reindex / cloud-link / seed).
         services.AddScoped<IDocumentValidator, MockDocumentValidator>();
         services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
-        services.AddScoped<IDocumentSyncService, DocumentSyncService>();
     }
 
     internal static string NormalizeAzureOpenAiEndpoint(string raw)

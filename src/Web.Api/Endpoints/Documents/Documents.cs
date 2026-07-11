@@ -5,7 +5,6 @@ using Modules.Ai.Application.Documents.DeleteDocument;
 using Modules.Ai.Application.Documents.LinkCloudDocument;
 using Modules.Ai.Application.Documents.ListDocuments;
 using Modules.Ai.Application.Documents.ReindexDocument;
-using Modules.Ai.Application.Documents.SyncDocuments;
 using Modules.Ai.Application.Documents.UploadDocument;
 using Application.Abstractions.Storage;
 using Modules.Ai.Domain.Documents;
@@ -160,15 +159,6 @@ public sealed class Documents : IEndpoint
             {
                 return Results.Problem($"Failed to retrieve file from {doc.Source}: {ex.Message}");
             }
-        })
-        .WithTags(Tags.Documents);
-
-        // POST /api/documents/sync → admin only. Triggers manual discovery on all seeders.
-        app.MapPost("documents/sync", [Authorize(Policy = Policies.RequireAdmin)]
-            async (ISender sender, CancellationToken ct) =>
-        {
-            Result result = await sender.Send(new SyncDocumentsCommand(), ct);
-            return result.Match(Results.NoContent, CustomResults.Problem);
         })
         .WithTags(Tags.Documents);
     }
