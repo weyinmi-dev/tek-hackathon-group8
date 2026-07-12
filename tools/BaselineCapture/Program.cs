@@ -269,7 +269,7 @@ static async Task<int> RunWorkflowSmokeAsync()
     Console.WriteLine($"fan-in join: split(5) → (a∥b∥c) → join → {joinTotal}");
     if (joinTotal != 30)
     {
-        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — join expected 30 (5+10+15), got {(joinTotal?.ToString() ?? "null")}.");
+        Console.Error.WriteLine($"WORKFLOW SMOKE FAILED — join expected 30 (5+10+15), got {joinTotal?.ToString() ?? "null"}.");
         return 1;
     }
 
