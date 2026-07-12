@@ -1,3 +1,4 @@
+using Application.Abstractions.Events;
 using Application.Abstractions.Messaging;
 using Microsoft.Extensions.Logging;
 using Modules.Alerts.Domain;
@@ -9,6 +10,7 @@ namespace Modules.Alerts.Application.Pipeline;
 internal sealed class CreateOrUpdateAlertCommandHandler(
     IAlertRepository alerts,
     IUnitOfWork unitOfWork,
+    IEventBus eventBus,
     ILogger<CreateOrUpdateAlertCommandHandler> logger)
     : ICommandHandler<CreateOrUpdateAlertCommand, CreateOrUpdateAlertResult>
 {
@@ -52,7 +54,7 @@ internal sealed class CreateOrUpdateAlertCommandHandler(
 
         // 3. No live alert with this fingerprint — create a new one.
         string code = BuildCode(request.AnomalyFingerprint);
-        Alert alert = Alert.RaiseFromAnomaly(
+        var alert = Alert.RaiseFromAnomaly(
             code: code,
             severity: request.Severity,
             title: request.Title,
@@ -70,6 +72,24 @@ internal sealed class CreateOrUpdateAlertCommandHandler(
         logger.LogInformation(
             "Alert {AlertId} ({Code}) raised from anomaly fingerprint {Fingerprint}",
             alert.Id, alert.Code, request.AnomalyFingerprint);
+
+        // Announce the new alarm. Published only here, on the create path — a recurrence is the same
+        // alarm firing again and must not re-open an investigation. Subscribers (currently the AI
+        // module's IncidentInvestigationWorkflow) react on their own; Alerts does not know they exist,
+        // and nothing downstream of this line can change the alert or optimization counts.
+        await eventBus.PublishAsync(
+            new AlarmReceived(
+                Id: Guid.NewGuid(),
+                AlertId: alert.Id,
+                Code: alert.Code,
+                Severity: request.Severity.ToString(),
+                TowerCode: request.TowerCode,
+                Region: request.Region,
+                Title: request.Title,
+                AiCause: request.AiCause,
+                Confidence: request.Confidence,
+                DetectedAtUtc: request.DetectedAtUtc),
+            cancellationToken);
 
         return Result.Success(new CreateOrUpdateAlertResult(alert.Id, WasCreated: true));
     }

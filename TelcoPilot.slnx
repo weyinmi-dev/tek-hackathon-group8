@@ -51,6 +51,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Modules.Ai.UnitTests/Modules.Ai.UnitTests.csproj" />
     <Project Path="tests/Modules.Network.UnitTests/Modules.Network.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tools/">

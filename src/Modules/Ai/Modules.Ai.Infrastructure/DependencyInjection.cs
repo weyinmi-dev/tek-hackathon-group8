@@ -136,6 +136,17 @@ public static class DependencyInjection
         services.AddScoped<MediatR.INotificationHandler<global::Application.Abstractions.Events.DocumentUploaded>,
             Modules.Ai.Infrastructure.Hosting.DocumentIngestionWorkflowHost>();
 
+        // Incident investigation (M12b): AlarmReceived → correlate → root cause → runbook → notify.
+        // Net-new capability, and deliberately additive — it reads alerts and emits a recommendation,
+        // and never writes an alert, an optimization, or an ingestion run. Registering it cannot move
+        // the pipeline's parity counts.
+        services.AddScoped<Modules.Ai.Agents.Agents.RootCauseAgentBuilder>();
+        services.AddScoped<Modules.Ai.Application.Incidents.IIncidentNotifier,
+            Modules.Ai.Infrastructure.Incidents.LoggingIncidentNotifier>();
+        services.AddScoped<Modules.Ai.Agents.Workflows.IncidentInvestigation.IncidentInvestigationWorkflowBuilder>();
+        services.AddScoped<MediatR.INotificationHandler<global::Application.Abstractions.Events.AlarmReceived>,
+            Modules.Ai.Infrastructure.Hosting.IncidentInvestigationWorkflowHost>();
+
         if (useAzure)
         {
             // The endpoint must be the resource root: operators commonly paste a Foundry-style URL
