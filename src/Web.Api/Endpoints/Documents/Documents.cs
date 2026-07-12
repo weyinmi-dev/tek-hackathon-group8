@@ -2,14 +2,12 @@ using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Modules.Ai.Application.Documents.DeleteDocument;
+using Modules.Ai.Application.Documents.DownloadDocument;
 using Modules.Ai.Application.Documents.LinkCloudDocument;
 using Modules.Ai.Application.Documents.ListDocuments;
 using Modules.Ai.Application.Documents.ReindexDocument;
-using Modules.Ai.Application.Documents.SyncDocuments;
 using Modules.Ai.Application.Documents.UploadDocument;
-using Modules.Ai.Application.Rag.Storage;
-using Modules.Ai.Domain.Documents;
-using Modules.Ai.Domain.Knowledge;
+using Application.Abstractions.Storage;
 using Modules.Identity.Application.Authorization;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -83,7 +81,9 @@ public sealed class Documents : IEndpoint
                 Tags: SplitTags(tagsRaw),
                 UploadedBy: actor), ct);
 
-            return result.Match(v => Results.Created($"/api/documents/{v.Id}", v), CustomResults.Problem);
+            // 202 Accepted: the document is stored and its ingestion is queued (async, off the
+            // outbox), not finished. The row starts Pending and transitions as the workflow runs.
+            return result.Match(v => Results.Accepted($"/api/documents/{v.Id}", v), CustomResults.Problem);
         })
         .WithTags(Tags.Documents)
         .DisableAntiforgery();
@@ -138,35 +138,12 @@ public sealed class Documents : IEndpoint
         
         // GET /api/documents/{id}/download → engineer+ can retrieve the original file.
         app.MapGet("documents/{id:guid}/download", [Authorize(Policy = Policies.RequireEngineer)]
-            async (Guid id, IManagedDocumentRepository documents, IDocumentStorageRegistry storage, CancellationToken ct) =>
+            async (Guid id, ISender sender, CancellationToken ct) =>
         {
-            ManagedDocument? doc = await documents.GetByIdAsync(id, ct);
-            if (doc is null) return Results.NotFound();
-            
-            if (!storage.IsAvailable(doc.Source))
-            {
-                return Results.Problem($"Storage provider {doc.Source} is not connected.", statusCode: 400);
-            }
-            
-            try
-            {
-                IDocumentStorageProvider provider = storage.For(doc.Source);
-                Stream stream = await provider.OpenReadAsync(doc.StorageKey, ct);
-                return Results.File(stream, doc.ContentType, doc.FileName);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem($"Failed to retrieve file from {doc.Source}: {ex.Message}");
-            }
-        })
-        .WithTags(Tags.Documents);
-
-        // POST /api/documents/sync → admin only. Triggers manual discovery on all seeders.
-        app.MapPost("documents/sync", [Authorize(Policy = Policies.RequireAdmin)]
-            async (ISender sender, CancellationToken ct) =>
-        {
-            Result result = await sender.Send(new SyncDocumentsCommand(), ct);
-            return result.Match(Results.NoContent, CustomResults.Problem);
+            Result<DocumentDownload> result = await sender.Send(new DownloadDocumentQuery(id), ct);
+            return result.Match(
+                file => Results.File(file.Content, file.ContentType, file.FileName),
+                CustomResults.Problem);
         })
         .WithTags(Tags.Documents);
     }

@@ -1,0 +1,4 @@
+timestamp,tower_code,signal_pct,load_pct,latency_ms,status
+2026-05-05T08:00:00Z,LOS-T-014,98,42,18,OK
+2026-05-05T08:05:00Z,LOS-T-014,71,87,42,Degraded
+2026-05-05T08:10:00Z,LOS-T-014,34,93,118,Critical

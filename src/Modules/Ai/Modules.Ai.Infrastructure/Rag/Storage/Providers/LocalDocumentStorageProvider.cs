@@ -1,5 +1,6 @@
+using SharedKernel;
 using Modules.Ai.Application.Rag.Documents;
-using Modules.Ai.Application.Rag.Storage;
+using Application.Abstractions.Storage;
 using Modules.Ai.Domain.Documents;
 
 namespace Modules.Ai.Infrastructure.Rag.Storage.Providers;
@@ -12,6 +13,10 @@ namespace Modules.Ai.Infrastructure.Rag.Storage.Providers;
 internal sealed class LocalDocumentStorageProvider(DocumentsOptions options) : IDocumentStorageProvider
 {
     private readonly string _root = ResolveRoot(options.LocalRoot);
+    // Reads fall back across the watch folders too: the seeder registers admin-provided documents
+    // (in AdditionalWatchFolders) with the bare file name as their storage key, so resolving a key
+    // against LocalRoot alone would fail to find them. Writes still target LocalRoot only.
+    private readonly IReadOnlyList<string> _readRoots = BuildReadRoots(options);
 
     public DocumentSource Source => DocumentSource.LocalUpload;
 
@@ -53,13 +58,38 @@ internal sealed class LocalDocumentStorageProvider(DocumentsOptions options) : I
 
     private string ResolvePath(string storageKey)
     {
-        string candidate = Path.GetFullPath(Path.Combine(_root, storageKey));
-        // Reject directory-traversal — the resolved path must stay rooted under our LocalRoot.
-        if (!candidate.StartsWith(_root, StringComparison.Ordinal))
+        // Return the first root that actually holds the file (LocalRoot, then watch folders), so
+        // admin-provided documents resolve. Each candidate is traversal-guarded against its own root.
+        foreach (string root in _readRoots)
         {
-            throw new InvalidOperationException("Storage key escapes the configured root.");
+            string candidate = Path.GetFullPath(Path.Combine(root, storageKey));
+            if (!candidate.StartsWith(root, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Storage key escapes the configured root.");
+            }
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
         }
-        return candidate;
+
+        // Not found anywhere — return the LocalRoot path so callers get a consistent
+        // FileNotFound rather than a misleading watch-folder path. (Traversal was already
+        // rejected above, since LocalRoot is the first root checked.)
+        return Path.GetFullPath(Path.Combine(_root, storageKey));
+    }
+
+    private static IReadOnlyList<string> BuildReadRoots(DocumentsOptions options)
+    {
+        var roots = new List<string> { ResolveRoot(options.LocalRoot) };
+        foreach (string folder in options.AdditionalWatchFolders ?? [])
+        {
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                roots.Add(ResolveRoot(folder));
+            }
+        }
+        return roots;
     }
 
     private static string ResolveRoot(string configured)

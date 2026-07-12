@@ -17,8 +17,6 @@ import type {
   UserListItem,
   DocumentListItem,
   DocumentProvider,
-  McpPlugin,
-  McpInvocationResult,
   ConversationSummary,
   ConversationDetail,
   EnergySiteDto,
@@ -276,8 +274,6 @@ export const api = {
     }),
   deleteDocument: (id: string) =>
     request<void>(`/documents/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  syncDocuments: () =>
-    request<void>("/documents/sync", { method: "POST" }),
 
   // Network ingestion — runs a log file (csv/json/xlsx/txt) through the 5-stage
   // AI pipeline (Parse → Analyze → Decide → Persist → Project). Returns the run
@@ -315,18 +311,6 @@ export const api = {
     },
   },
 
-  // MCP
-  mcpPlugins: () => request<McpPlugin[]>("/mcp/plugins"),
-  mcpInvoke: (body: {
-    pluginId: string;
-    capability: string;
-    arguments?: Record<string, unknown>;
-    correlationId?: string;
-  }) =>
-    request<McpInvocationResult>("/mcp/invoke", {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
 
   // Energy — site fleet, KPIs, anomalies, traces, optimization, recommendations.
   energy: {

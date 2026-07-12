@@ -1,7 +1,7 @@
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
 using Modules.Network.Domain;

@@ -20,6 +20,9 @@ internal sealed class ManagedDocumentConfiguration : IEntityTypeConfiguration<Ma
         builder.Property(d => d.ExternalReference).HasMaxLength(1024);
         builder.Property(d => d.UploadedBy).HasMaxLength(64).IsRequired();
         builder.Property(d => d.LastIndexError).HasMaxLength(2048);
+        // Nullable — AddMissingColumnsAsync adds these to an existing table without a migration.
+        builder.Property(d => d.ProcessingStage).HasMaxLength(64);
+        builder.Property(d => d.CheckpointId).HasMaxLength(128);
 
         builder.Property(d => d.Source).HasConversion<int>();
         builder.Property(d => d.Status).HasConversion<int>();

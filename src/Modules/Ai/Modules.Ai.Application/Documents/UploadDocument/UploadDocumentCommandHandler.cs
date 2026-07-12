@@ -1,8 +1,8 @@
 using Application.Abstractions.Messaging;
-using Microsoft.Extensions.Logging;
+using global::Application.Abstractions.Events;
+using Application.Abstractions.Storage;
+using Modules.Ai.Application.Abstractions;
 using Modules.Ai.Application.Rag.Documents;
-using Modules.Ai.Application.Rag.Ingestion;
-using Modules.Ai.Application.Rag.Storage;
 using Modules.Ai.Domain;
 using Modules.Ai.Domain.Documents;
 using SharedKernel;
@@ -12,10 +12,9 @@ namespace Modules.Ai.Application.Documents.UploadDocument;
 internal sealed class UploadDocumentCommandHandler(
     IDocumentStorageRegistry storage,
     IManagedDocumentRepository documents,
-    IDocumentIngestionService ingestion,
+    IOutboxWriter outbox,
     IUnitOfWork uow,
-    DocumentsOptions options,
-    ILogger<UploadDocumentCommandHandler> logger) : ICommandHandler<UploadDocumentCommand, UploadedDocumentDto>
+    DocumentsOptions options) : ICommandHandler<UploadDocumentCommand, UploadedDocumentDto>
 {
     public async Task<Result<UploadedDocumentDto>> Handle(UploadDocumentCommand cmd, CancellationToken ct)
     {
@@ -42,23 +41,21 @@ internal sealed class UploadDocumentCommandHandler(
             uploadedBy: cmd.UploadedBy);
 
         await documents.AddAsync(doc, ct);
+
+        // Enqueue the async pipeline trigger in the SAME unit of work as the document row, then
+        // return immediately — ingestion (RAG indexing, and network-log analysis if Network decides
+        // the file is one) runs off the outbox (Phase 3 M9). The document starts life as Pending.
+        outbox.Enqueue(new DocumentUploaded(
+            Id: Guid.NewGuid(),
+            DocumentId: doc.Id,
+            FileName: doc.FileName,
+            ContentType: doc.ContentType,
+            StorageKey: doc.StorageKey,
+            Source: (int)doc.Source,
+            SubmittedBy: doc.UploadedBy));
         await uow.SaveChangesAsync(ct);
 
-        // Synchronously ingest so the demo flow is "upload → searchable" without needing
-        // a background worker. The pipeline updates the document's status itself.
-        try
-        {
-            await ingestion.IngestAsync(doc.Id, ct);
-        }
-        catch (Exception ex)
-        {
-            // Surface the failure on the document; the upload itself stays accepted so the
-            // operator can retry from the UI without re-uploading.
-            logger.LogWarning(ex, "Ingestion failed for {DocumentId}", doc.Id);
-        }
-
-        ManagedDocument fresh = await documents.GetByIdAsync(doc.Id, ct) ?? doc;
         return Result.Success(new UploadedDocumentDto(
-            fresh.Id, fresh.Title, fresh.FileName, fresh.SizeBytes, fresh.Status.ToString(), fresh.Source));
+            doc.Id, doc.Title, doc.FileName, doc.SizeBytes, doc.Status.ToString(), doc.Source));
     }
 }

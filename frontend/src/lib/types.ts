@@ -200,7 +200,7 @@ export type DocumentSource =
   | "AzureBlob"
   | "WebLink";
 
-export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed" | "Rejected";
+export type IndexingStatus = "Pending" | "InProgress" | "Indexed" | "Failed" | "Rejected" | "Cancelled";
 
 export type DocumentListItem = {
   id: string;
@@ -227,35 +227,6 @@ export type DocumentProvider = {
   isAvailable: boolean;
 };
 
-export type McpCapabilityParameter = {
-  name: string;
-  type: string;
-  description: string;
-  required: boolean;
-};
-
-export type McpCapability = {
-  name: string;
-  description: string;
-  parameters: McpCapabilityParameter[];
-};
-
-export type McpPlugin = {
-  pluginId: string;
-  displayName: string;
-  kind: "Internal" | "ExternalMcpServer" | "ExternalApi";
-  capabilities: McpCapability[];
-};
-
-export type McpInvocationResult = {
-  pluginId: string;
-  capability: string;
-  isSuccess: boolean;
-  output: unknown;
-  error: string | null;
-  durationMs: number;
-  correlationId: string | null;
-};
 
 // ── Energy module ──────────────────────────────────────────────────────────────
 // Mirrors the DTOs returned by /api/energy/*. Field names match what the Energy

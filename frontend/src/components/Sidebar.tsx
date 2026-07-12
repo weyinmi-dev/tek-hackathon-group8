@@ -29,7 +29,6 @@ const NAV: NavItem[] = [
   { id: "/optimize",  label: "Optimization",   icon: "∿", section: "ENERGY" },
   { id: "/insights",  label: "Dashboard",      icon: "▤", section: "INSIGHTS" },
   { id: "/users",     label: "Users & Roles",  icon: "◆", section: "ADMIN", roles: ["admin", "manager"] },
-  { id: "/mcp",       label: "MCP Plugins",    icon: "⚙", section: "ADMIN", roles: ["admin", "manager"] },
   { id: "/audit",     label: "Audit Log",      icon: "≡", section: "ADMIN", roles: ["admin", "manager"] },
 ];
 const SECTIONS = ["OPS", "ENERGY", "INSIGHTS", "ADMIN"];

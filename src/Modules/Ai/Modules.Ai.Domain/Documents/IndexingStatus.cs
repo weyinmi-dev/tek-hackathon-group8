@@ -11,4 +11,11 @@ public enum IndexingStatus
     Indexed = 2,
     Failed = 3,
     Rejected = 4,
+
+    /// <summary>
+    /// Ingestion was deliberately stopped — operator aborted the upload, or in-flight work
+    /// was drained on shutdown. Distinct from <see cref="Failed"/>: cancellation is not an error.
+    /// Added for the asynchronous document workflow (Phase 2 §9.5).
+    /// </summary>
+    Cancelled = 5,
 }

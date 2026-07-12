@@ -38,6 +38,7 @@
     <Project Path="src/Modules/Analytics/Modules.Analytics.Infrastructure/Modules.Analytics.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/src/Modules/Ai/">
+    <Project Path="src/Modules/Ai/Modules.Ai.Agents/Modules.Ai.Agents.csproj" />
     <Project Path="src/Modules/Ai/Modules.Ai.Application/Modules.Ai.Application.csproj" />
     <Project Path="src/Modules/Ai/Modules.Ai.Domain/Modules.Ai.Domain.csproj" />
     <Project Path="src/Modules/Ai/Modules.Ai.Infrastructure/Modules.Ai.Infrastructure.csproj" />
@@ -49,6 +50,11 @@
     <Project Path="src/Modules/Energy/Modules.Energy.Infrastructure/Modules.Energy.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
+    <Project Path="tests/Modules.Ai.UnitTests/Modules.Ai.UnitTests.csproj" />
     <Project Path="tests/Modules.Network.UnitTests/Modules.Network.UnitTests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/BaselineCapture/BaselineCapture.csproj" />
   </Folder>
 </Solution>

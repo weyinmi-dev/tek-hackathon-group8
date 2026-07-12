@@ -27,6 +27,7 @@ export class AnomaliesStore {
 
   private _disposePersist: (() => void) | null = null;
   private _toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private _loadPromise: Promise<void> | null = null;
 
   constructor() {
     makeAutoObservable(this, {}, { autoBind: true });
@@ -63,8 +64,15 @@ export class AnomaliesStore {
   }
 
   async load(take = 50): Promise<void> {
-    this.loading = true;
-    this.error = null;
+    if (this._loadPromise) return this._loadPromise;
+    this._loadPromise = this._doLoad(take).finally(() => {
+      this._loadPromise = null;
+    });
+    return this._loadPromise;
+  }
+
+  private async _doLoad(take: number): Promise<void> {
+    runInAction(() => { this.loading = true; this.error = null; });
     try {
       const r = await api.energy.anomalies(take);
       runInAction(() => {
@@ -73,8 +81,6 @@ export class AnomaliesStore {
         if (!stillThere) this.selectedId = this.visible[0]?.id ?? null;
       });
     } catch (e) {
-      // Same diagnostic story as AlertsStore: surface in DevTools + store.error
-      // so the operator can tell "API failed" apart from "no anomalies".
       console.warn("[AnomaliesStore] load failed:", e);
       runInAction(() => { this.error = e instanceof Error ? e.message : String(e); });
     } finally {

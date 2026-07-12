@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Application.Abstractions.Messaging;
 using Microsoft.Extensions.Logging;
-using Modules.Ai.Application.SemanticKernel;
 using Modules.Ai.Domain;
 using Modules.Ai.Domain.Conversations;
 using Modules.Analytics.Api;
@@ -10,9 +9,8 @@ using SharedKernel;
 namespace Modules.Ai.Application.Copilot.AskCopilot;
 
 internal sealed class AskCopilotCommandHandler(
-    ICopilotOrchestrator orchestrator,
+    ICopilotAgent copilotAgent,
     IConversationRepository conversations,
-    IChatLogRepository chatLog,
     IUnitOfWork uow,
     IAnalyticsApi analytics,
     ILogger<AskCopilotCommandHandler> logger)
@@ -42,18 +40,21 @@ internal sealed class AskCopilotCommandHandler(
         // ExecuteUpdate after the inserts succeed. Newly-created conversations stay on the
         // normal INSERT path (the bug only affects UPDATE).
         (Conversation conversation, bool isExisting) = await ResolveConversationAsync(request, cancellationToken);
-        Message userMessage = conversation.AppendMessage(MessageRole.User, request.Query);
 
         CopilotAnswer answer;
         try
         {
-            answer = await orchestrator.AskAsync(request.Query, request.ActorRole, cancellationToken);
+            // The agent loads this conversation's prior turns via the chat-history provider bound to
+            // its session, so history reaches the model (fixes Phase 1 §4.7). We persist the exchange
+            // ourselves below with the answer metadata, so that provider only reads — no double-write.
+            answer = await copilotAgent.AskAsync(request.Query, conversation.Id, request.ActorRole, cancellationToken);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "AI orchestrator failed for query from {ActorHandle}", request.ActorHandle);
+            logger.LogError(ex, "Copilot agent failed for query from {ActorHandle}", request.ActorHandle);
             // Persist the user question even though the AI never answered, so a refresh shows
             // the question (and the user can retry) instead of silently dropping the turn.
+            conversation.AppendMessage(MessageRole.User, request.Query);
             try
             {
                 await PersistAndUpdateActivityAsync(conversation, isExisting, cancellationToken);
@@ -68,8 +69,10 @@ internal sealed class AskCopilotCommandHandler(
         logger.LogInformation("Copilot response: confidence {Confidence}, provider {Provider}, skills {SkillCount}",
             answer.Confidence, answer.Provider, answer.SkillTrace.Count);
 
-        // Persist the assistant turn with the provider/trace/confidence carried in metadata
-        // so on session restore the UI can render the same answer card without re-asking.
+        // Persist the exchange now (the agent already ran with prior history loaded). The assistant
+        // turn carries provider/trace/confidence in metadata so a session restore renders the same
+        // answer card without re-asking.
+        Message userMessage = conversation.AppendMessage(MessageRole.User, request.Query);
         string metadata = JsonSerializer.Serialize(new MessageMetadata(
             Provider: answer.Provider,
             Confidence: answer.Confidence,
@@ -77,17 +80,6 @@ internal sealed class AskCopilotCommandHandler(
             Attachments: [.. answer.Attachments]), MetadataJson);
 
         Message assistantMessage = conversation.AppendMessage(MessageRole.Assistant, answer.Answer, metadata);
-
-        // ChatLog stays as a flat audit row for cross-module analytics — kept for backward
-        // compat with the audit page and any external dashboards. Conversations are the new
-        // user-facing source of truth.
-        await chatLog.AddAsync(ChatLog.Record(
-            userId: request.UserId == Guid.Empty ? null : request.UserId,
-            actor: request.ActorHandle,
-            question: request.Query,
-            answer: answer.Answer,
-            skillTrace: string.Join(" → ", answer.SkillTrace.Select(s => $"{s.Skill}.{s.Function}")),
-            confidence: answer.Confidence), cancellationToken);
 
         await PersistAndUpdateActivityAsync(conversation, isExisting, cancellationToken);
 

@@ -12,8 +12,6 @@
          Nominatim / Overpass. Other modules don't make outbound HTTP calls so this dependency
          is scoped to the AI infrastructure project. -->
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
-    <PackageReference Include="Microsoft.SemanticKernel" Version="1.75.0" />
-    <PackageReference Include="Microsoft.SemanticKernel.Connectors.AzureOpenAI" Version="1.75.0" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
     <PackageReference Include="Pgvector" Version="0.3.1" />
     <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.2.2" />
@@ -26,15 +24,17 @@
     <ProjectReference Include="..\..\..\Application\Application.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\Infrastructure.csproj" />
     <ProjectReference Include="..\..\Network\Modules.Network.Api\Modules.Network.Api.csproj" />
-    <ProjectReference Include="..\..\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
     <ProjectReference Include="..\..\Alerts\Modules.Alerts.Api\Modules.Alerts.Api.csproj" />
     <ProjectReference Include="..\..\Analytics\Modules.Analytics.Api\Modules.Analytics.Api.csproj" />
     <ProjectReference Include="..\..\Energy\Modules.Energy.Api\Modules.Energy.Api.csproj" />
     <ProjectReference Include="..\Modules.Ai.Application\Modules.Ai.Application.csproj" />
+    <!-- Composition root: the only project permitted to reference the MAF agent layer (Phase 2 §4.1). -->
+    <ProjectReference Include="..\Modules.Ai.Agents\Modules.Ai.Agents.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <InternalsVisibleTo Include="Modules.Network.UnitTests" />
+    <InternalsVisibleTo Include="BaselineCapture" />
   </ItemGroup>
 
 </Project>

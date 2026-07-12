@@ -1,3 +1,4 @@
+using SharedKernel;
 using Modules.Ai.Domain.Knowledge;
 
 namespace Modules.Ai.Application.Rag.Models;

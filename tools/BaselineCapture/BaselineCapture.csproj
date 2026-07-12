@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Standalone characterization tool; not part of the app or the test project. -->
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="10.0.3" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Network\Modules.Network.Domain\Modules.Network.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Network\Modules.Network.Infrastructure\Modules.Network.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Application\Modules.Alerts.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Domain\Modules.Alerts.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Infrastructure\Modules.Alerts.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Application\Modules.Analytics.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Domain\Modules.Analytics.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Infrastructure\Modules.Analytics.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Infrastructure\Modules.Ai.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Agents\Modules.Ai.Agents.csproj" />
+  </ItemGroup>
+</Project>

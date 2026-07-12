@@ -1,3 +1,4 @@
+using SharedKernel;
 using Microsoft.Extensions.Logging;
 using Modules.Ai.Application.Rag;
 using Modules.Ai.Application.Rag.Embeddings;

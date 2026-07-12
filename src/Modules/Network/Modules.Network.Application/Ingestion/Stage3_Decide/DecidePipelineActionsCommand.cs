@@ -1,6 +1,6 @@
 using Application.Abstractions.Messaging;
 using Application.Abstractions.Pipeline;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 
 namespace Modules.Network.Application.Ingestion.Stage3_Decide;
 
