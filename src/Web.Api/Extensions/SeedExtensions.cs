@@ -1,10 +1,4 @@
-using Microsoft.Extensions.Logging;
-using Modules.Ai.Application.Rag;
-using Modules.Ai.Application.Rag.Indexing;
-using Modules.Ai.Domain.Knowledge;
 using Modules.Ai.Infrastructure.Database;
-using Modules.Ai.Infrastructure.Rag.Indexing;
-using Modules.Ai.Infrastructure.Rag.Seed;
 using Modules.Alerts.Infrastructure.Database;
 using Modules.Alerts.Infrastructure.Seed;
 using Modules.Analytics.Infrastructure.Database;
@@ -33,24 +27,14 @@ public static class SeedExtensions
         await AnalyticsSeeder.SeedAsync(sp.GetRequiredService<AnalyticsDbContext>());
         await EnergySeeder.SeedAsync(sp.GetRequiredService<EnergyDbContext>());
 
+        // Touch the AI DbContext so its schema is provisioned. Nothing is indexed here.
         _ = sp.GetRequiredService<AiDbContext>();
 
-        RagOptions ragOptions = sp.GetRequiredService<RagOptions>();
-        if (ragOptions.Enabled && ragOptions.AutoSeedCorpus)
-        {
-            ILogger logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("KnowledgeCorpusSeeder");
-            await KnowledgeCorpusSeeder.SeedAsync(
-                sp.GetRequiredService<IRagIndexer>(),
-                sp.GetRequiredService<IKnowledgeRepository>(),
-                logger);
-
-            // First-pass energy → knowledge ingestion so the very first Copilot query
-            // already has fresh site / anomaly context to retrieve. The hosted indexer
-            // takes over from here on a 5-minute cadence.
-            await sp.GetRequiredService<EnergyKnowledgeIndexer>().IndexAsync();
-
-            // Auto-discovery of local PDF files moved to the documents store
-            await sp.GetRequiredService<LocalDocumentSeeder>().SeedAsync();
-        }
+        // RAG seeding (knowledge corpus, energy → knowledge, local documents) deliberately no longer
+        // runs on the boot path (Phase 3 M14; Phase 1 §4.10 #7 and #8). It used to embed the entire
+        // corpus before the API could serve its first request, AND it duplicated work the hosted
+        // services were already doing — the same seed ran twice every boot. KnowledgeCorpusSeederService,
+        // EnergyKnowledgeIndexerService and LocalDocumentSeederService now own it, in the background.
+        // All three are idempotent, and nothing serves a query before they land.
     }
 }

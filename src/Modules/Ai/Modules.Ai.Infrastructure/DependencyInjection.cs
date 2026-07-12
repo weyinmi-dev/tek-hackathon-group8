@@ -183,6 +183,9 @@ public static class DependencyInjection
         // worker that re-syncs Site/Anomaly state every 5 minutes so the Copilot can
         // ground "why did Surulere consume more diesel yesterday" answers in fresh data.
         services.AddScoped<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexer>();
+        // Corpus seeding moved OFF the boot path (M14): it used to embed the whole corpus before the
+        // API could accept traffic, and duplicated the hosted seeders below.
+        services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.KnowledgeCorpusSeederService>();
         services.AddHostedService<Modules.Ai.Infrastructure.Rag.Indexing.EnergyKnowledgeIndexerService>();
         services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentSeederService>();
         services.AddHostedService<Modules.Ai.Infrastructure.Rag.Seed.LocalDocumentWatcherService>();
@@ -204,16 +207,24 @@ public static class DependencyInjection
                 new Uri(normalizedEndpoint),
                 new ApiKeyCredential(ai.AzureOpenAi.ApiKey)));
 
-            services.AddSingleton<IEmbeddingGenerator>(sp => new AzureOpenAiEmbeddingGenerator(
-                sp.GetRequiredService<AzureOpenAIClient>(),
-                deployment,
-                dim,
-                sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AzureOpenAiEmbeddingGenerator>>()));
+            // Cached by content hash (M14): the energy indexer re-runs every 5 minutes over sites
+            // whose text rarely changes, and re-indexing a document re-embeds unchanged chunks —
+            // each one otherwise a paid network round-trip. Only the Azure generator is wrapped;
+            // caching the local hashing embedder would add Redis hops to a cheap deterministic
+            // computation and make it slower.
+            services.AddSingleton<IEmbeddingGenerator>(sp => new CachingEmbeddingGenerator(
+                new AzureOpenAiEmbeddingGenerator(
+                    sp.GetRequiredService<AzureOpenAIClient>(),
+                    deployment,
+                    dim,
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<AzureOpenAiEmbeddingGenerator>>()),
+                sp.GetRequiredService<global::Application.Abstractions.Caching.ICacheService>()));
         }
         else
         {
             // Offline / Mock mode — deterministic hashing embedder. RAG still works end-to-end,
-            // just with token-overlap relevance instead of true semantic recall.
+            // just with token-overlap relevance instead of true semantic recall. Not cached: it is
+            // local and deterministic, so a cache would only add latency.
             services.AddSingleton<IEmbeddingGenerator>(_ => new HashingEmbeddingGenerator(rag.EmbeddingDimensions));
         }
     }

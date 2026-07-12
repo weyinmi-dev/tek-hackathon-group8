@@ -1,5 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
+using Application.Abstractions.Caching;
 using Microsoft.Extensions.Logging;
 using Modules.Ai.Application.Rag.Indexing;
 using Modules.Ai.Application.Rag.Models;
@@ -26,35 +28,80 @@ namespace Modules.Ai.Infrastructure.Rag.Indexing;
 public sealed class EnergyKnowledgeIndexer(
     IEnergyApi energy,
     IRagIndexer ragIndexer,
+    ICacheService cache,
     ILogger<EnergyKnowledgeIndexer> logger)
 {
+    private static readonly TimeSpan HashTtl = TimeSpan.FromDays(7);
+
     public async Task<int> IndexAsync(CancellationToken cancellationToken = default)
     {
-        var docs = new List<KnowledgeDocumentInput>();
+        var candidates = new List<KnowledgeDocumentInput>();
 
         IReadOnlyList<SiteSnapshot> sites = await energy.ListSitesAsync(cancellationToken);
         foreach (SiteSnapshot s in sites)
         {
-            docs.Add(BuildSiteDoc(s));
+            candidates.Add(BuildSiteDoc(s));
         }
 
         IReadOnlyList<AnomalySnapshot> anomalies = await energy.ListAnomaliesAsync(200, cancellationToken);
         foreach (AnomalySnapshot a in anomalies)
         {
-            docs.Add(BuildAnomalyDoc(a));
+            candidates.Add(BuildAnomalyDoc(a));
         }
 
-        if (docs.Count == 0)
+        if (candidates.Count == 0)
         {
             return 0;
         }
 
+        // Dirty check (Phase 3 M14). This runs every five minutes over a fleet whose text is usually
+        // byte-for-byte identical to the last pass; without it the indexer rewrites and re-embeds the
+        // whole corpus on every tick. Only documents whose content hash actually moved are re-indexed.
+        var docs = new List<KnowledgeDocumentInput>();
+        var pendingHashes = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (KnowledgeDocumentInput doc in candidates)
+        {
+            string key = HashKey(doc.SourceKey);
+            string hash = ContentHash(doc);
+
+            string? lastSeen = await cache.GetAsync<string>(key, cancellationToken);
+            if (string.Equals(lastSeen, hash, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            docs.Add(doc);
+            pendingHashes[key] = hash;
+        }
+
+        if (docs.Count == 0)
+        {
+            logger.LogDebug(
+                "EnergyKnowledgeIndexer: no content changed ({Sites} sites, {Anomalies} anomalies) — nothing re-indexed.",
+                sites.Count, anomalies.Count);
+            return 0;
+        }
+
         IndexResult result = await ragIndexer.IndexBatchAsync(docs, cancellationToken);
+
+        // Record hashes only after a successful index, so a failed pass is retried next tick rather
+        // than being silently marked clean.
+        foreach ((string key, string hash) in pendingHashes)
+        {
+            await cache.SetAsync(key, hash, HashTtl, cancellationToken);
+        }
+
         logger.LogInformation(
-            "EnergyKnowledgeIndexer: indexed {Docs} documents → {Chunks} chunks (sites={Sites}, anomalies={Anomalies}).",
-            result.DocumentsIndexed, result.ChunksIndexed, sites.Count, anomalies.Count);
+            "EnergyKnowledgeIndexer: indexed {Docs} changed documents → {Chunks} chunks; skipped {Skipped} unchanged (sites={Sites}, anomalies={Anomalies}).",
+            result.DocumentsIndexed, result.ChunksIndexed, candidates.Count - docs.Count, sites.Count, anomalies.Count);
         return result.DocumentsIndexed;
     }
+
+    private static string HashKey(string sourceKey) => $"energy-index:{sourceKey}";
+
+    private static string ContentHash(KnowledgeDocumentInput doc) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes($"{doc.Title}\n{doc.Region}\n{doc.Body}")));
 
     private static KnowledgeDocumentInput BuildSiteDoc(SiteSnapshot s)
     {
