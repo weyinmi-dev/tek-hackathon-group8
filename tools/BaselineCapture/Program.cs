@@ -194,7 +194,7 @@ static async Task<int> RunWorkflowSmokeAsync()
     }
 
     // Both branches of the conditional must fire correctly — prove routing, not just that it runs.
-    CheckpointManager manager = CheckpointManager.CreateInMemory();
+    var manager = CheckpointManager.CreateInMemory();
     (string? keptLabel, List<CheckpointInfo> keptCheckpoints) = await RunOnce(15, manager);
     (string? droppedLabel, _) = await RunOnce(5, CheckpointManager.CreateInMemory());
 
@@ -339,7 +339,7 @@ static async Task<int> RunDbCheckpointSmokeAsync()
     {
         var pgStore = new Modules.Ai.Agents.Workflows.PostgresCheckpointStore(
             new Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore(db));
-        CheckpointManager manager = CheckpointManager.CreateJson(pgStore);
+        var manager = CheckpointManager.CreateJson(pgStore);
         StreamingRun run = await InProcessExecution.RunStreamingAsync(BuildChain(), 15, manager);
         await foreach (WorkflowEvent evt in run.WatchStreamAsync())
         {
@@ -362,7 +362,7 @@ static async Task<int> RunDbCheckpointSmokeAsync()
     {
         var pgStore = new Modules.Ai.Agents.Workflows.PostgresCheckpointStore(
             new Modules.Ai.Infrastructure.Checkpointing.WorkflowCheckpointStore(db));
-        CheckpointManager manager = CheckpointManager.CreateJson(pgStore);
+        var manager = CheckpointManager.CreateJson(pgStore);
         StreamingRun resumed = await InProcessExecution.ResumeStreamingAsync(BuildChain(), mid, manager, timeout.Token);
         await foreach (WorkflowEvent evt in resumed.WatchStreamAsync(timeout.Token))
         {
@@ -374,7 +374,7 @@ static async Task<int> RunDbCheckpointSmokeAsync()
     }
 
     // Tidy up the rows this smoke wrote.
-    await using (var cleanup = dataSource.CreateCommand(
+    await using (NpgsqlCommand cleanup = dataSource.CreateCommand(
         "DELETE FROM ai.workflow_checkpoints WHERE run_id = @r OR run_id LIKE 'verif-%'"))
     {
         cleanup.Parameters.AddWithValue("r", mid.SessionId);
@@ -407,9 +407,10 @@ static async Task<int> RunAgentSmokeAsync()
         new AlertTools(sender),
         new EnergyTools(sender),
         new KnowledgeTools(sender),
-        new DocumentTools(sender)).Build();
+        new DocumentTools(sender),
+        new GeoTools(sender)).Build();
 
-    var response = await agent.RunAsync("What is the status of TWR-LEK-003?");
+    AgentResponse response = await agent.RunAsync("What is the status of TWR-LEK-003?");
     string text = response.ToString() ?? string.Empty;
     Console.WriteLine($"agent replied: {text}");
 

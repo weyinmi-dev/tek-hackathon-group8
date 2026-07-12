@@ -25,7 +25,8 @@ public sealed class OperationsCopilotAgentBuilder(
     AlertTools alerts,
     EnergyTools energy,
     KnowledgeTools knowledge,
-    DocumentTools documents)
+    DocumentTools documents,
+    GeoTools geo)
 {
     public AIAgent Build()
     {
@@ -47,6 +48,8 @@ public sealed class OperationsCopilotAgentBuilder(
                     AIFunctionFactory.Create(energy.GetDieselTrace),
                     AIFunctionFactory.Create(knowledge.QueryKnowledge),
                     AIFunctionFactory.Create(documents.SearchDocuments),
+                    AIFunctionFactory.Create(geo.GetSiteGeoContext),
+                    AIFunctionFactory.Create(geo.ClassifyRegion),
                 ],
             },
             ChatHistoryProvider = chatHistory,
