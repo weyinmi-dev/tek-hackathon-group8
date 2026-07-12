@@ -74,7 +74,7 @@ public sealed partial class EmbedChunksExecutor(IEmbeddingGenerator embeddings) 
         var vectors = new List<float[]>(input.Chunks.Count);
         for (int offset = 0; offset < input.Chunks.Count; offset += MaxBatch)
         {
-            List<string> batch = input.Chunks
+            var batch = input.Chunks
                 .Skip(offset)
                 .Take(MaxBatch)
                 .Select(c => c.Content)
@@ -93,7 +93,7 @@ public sealed partial class PersistKnowledgeExecutor(ISender sender) : Executor(
     [MessageHandler]
     public async ValueTask<IngestionCompleted> HandleAsync(EmbeddedText input, IWorkflowContext context)
     {
-        List<ChunkEmbedding> chunks = input.Chunks
+        var chunks = input.Chunks
             .Zip(input.Vectors, (c, v) => new ChunkEmbedding(c.Ordinal, c.Content, c.TokenEstimate, v))
             .ToList();
 

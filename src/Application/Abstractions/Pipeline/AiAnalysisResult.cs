@@ -1,10 +1,10 @@
 namespace Application.Abstractions.Pipeline;
 
 /// <summary>
-/// The composite, schema-enforced result of one Stage 2 AI invocation. The
-/// SemanticKernel-backed implementation of <c>INetworkBatchAnalyzer</c> populates this
-/// from strongly-typed <c>[KernelFunction]</c> returns, and FluentValidation rejects
-/// any result that violates the contract before it reaches the decision layer.
+/// The composite result of one Stage-2 analysis: what the analyzer found in a batch of parsed
+/// network events. Produced by <c>NetworkLogAnalysisWorkflow</c> via <c>INetworkBatchAnalyzer</c>,
+/// and consumed by the decision stage. Because the shape is strongly typed rather than free-form
+/// model output, the decision layer cannot be handed something it does not understand.
 /// </summary>
 public sealed record AiAnalysisResult(
     IReadOnlyList<DetectedAnomaly> Anomalies,

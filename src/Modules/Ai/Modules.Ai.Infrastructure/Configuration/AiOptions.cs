@@ -1,4 +1,4 @@
-namespace Modules.Ai.Infrastructure.SemanticKernel;
+namespace Modules.Ai.Infrastructure.Configuration;
 
 public sealed class AiOptions
 {

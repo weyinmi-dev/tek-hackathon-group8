@@ -1,6 +1,6 @@
 using Application.Abstractions.Caching;
 using Microsoft.Extensions.Options;
-using Modules.Ai.Infrastructure.SemanticKernel;
+using Modules.Ai.Infrastructure.Configuration;
 using Modules.Network.Api;
 
 namespace Modules.Ai.Infrastructure.Mcp.Osm;

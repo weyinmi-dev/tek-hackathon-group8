@@ -11,7 +11,6 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
 {
     private readonly RagOptions _ragOptions = ragOptions;
 
-    public DbSet<ChatLog> ChatLogs => Set<ChatLog>();
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
@@ -23,18 +22,9 @@ public sealed class AiDbContext(DbContextOptions<AiDbContext> options, RagOption
         modelBuilder.HasDefaultSchema(Schema.Ai);
         modelBuilder.HasPostgresExtension("vector");
 
-        modelBuilder.Entity<ChatLog>(b =>
-        {
-            b.ToTable("chat_logs");
-            b.HasKey(c => c.Id);
-            b.Property(c => c.Actor).HasMaxLength(64).IsRequired();
-            b.Property(c => c.Question).HasMaxLength(2048).IsRequired();
-            b.Property(c => c.Answer).HasMaxLength(8192).IsRequired();
-            b.Property(c => c.SkillTrace).HasMaxLength(2048).IsRequired();
-            b.HasIndex(c => c.OccurredAtUtc);
-            b.Ignore(c => c.DomainEvents);
-        });
-
+        // ChatLog is gone (Phase 3 M14): a flat audit mirror of the conversation, written by the old
+        // copilot handler and read by nothing. Conversations + Messages are the source of truth.
+        // The existing ai.chat_logs table is simply left unmapped — drop it whenever convenient.
         modelBuilder.ApplyConfiguration(new KnowledgeDocumentConfiguration());
         modelBuilder.ApplyConfiguration(new KnowledgeChunkConfiguration(_ragOptions));
         modelBuilder.ApplyConfiguration(new ManagedDocumentConfiguration());

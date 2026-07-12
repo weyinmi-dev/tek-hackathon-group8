@@ -31,7 +31,7 @@ using Modules.Ai.Infrastructure.Rag.Storage;
 using Modules.Ai.Infrastructure.Rag.Storage.Providers;
 using Modules.Ai.Infrastructure.Rag.Stores;
 using Modules.Ai.Infrastructure.Repositories;
-using Modules.Ai.Infrastructure.SemanticKernel;
+using Modules.Ai.Infrastructure.Configuration;
 using FluentValidation;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
 using Application.Abstractions.Pipeline;
@@ -86,7 +86,6 @@ public static class DependencyInjection
             })
             .UseSnakeCaseNamingConvention());
 
-        services.AddScoped<IChatLogRepository, ChatLogRepository>();
         services.AddScoped<IConversationRepository, ConversationRepository>();
         services.AddScoped<IKnowledgeRepository, KnowledgeRepository>();
         services.AddScoped<IManagedDocumentRepository, ManagedDocumentRepository>();

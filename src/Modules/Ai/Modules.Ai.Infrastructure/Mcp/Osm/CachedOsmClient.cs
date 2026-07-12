@@ -1,7 +1,7 @@
 using System.Globalization;
 using Application.Abstractions.Caching;
 using Microsoft.Extensions.Options;
-using Modules.Ai.Infrastructure.SemanticKernel;
+using Modules.Ai.Infrastructure.Configuration;
 
 namespace Modules.Ai.Infrastructure.Mcp.Osm;
 
