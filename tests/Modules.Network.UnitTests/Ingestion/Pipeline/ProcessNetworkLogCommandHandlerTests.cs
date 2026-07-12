@@ -1,12 +1,13 @@
 using System.Text;
 using Application.Abstractions.Events;
+using Application.Abstractions.Storage;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Modules.Network.Application.Ingestion.Pipeline;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
 using Modules.Network.Domain;
@@ -188,7 +189,25 @@ public sealed class ProcessNetworkLogCommandHandlerTests
             new InMemoryUnitOfWork(),
             sender,
             eventBus,
+            new NoOpFileStaging(),
             NullLogger<ProcessNetworkLogCommandHandler>.Instance);
+
+    /// <summary>
+    /// The orchestrator stages the upload so Stage-2 can read raw content off disk. These tests are
+    /// about state transitions and event publication, so staging is stubbed out — it must not fail
+    /// the run, and returning null is the same signal the real service gives on I/O error.
+    /// </summary>
+    private sealed class NoOpFileStaging : IFileStagingService
+    {
+        public string Root => "/tmp/telcopilot-test";
+
+        public Task<string?> StageAsync(
+            string contentHash, string fileName, byte[] bytes, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>($"uploads/{contentHash[..8]}/{fileName}");
+
+        public Task<string?> TryReadTextAsync(string relativePath, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+    }
 
     private sealed class InMemoryRunRepo : IIngestionRunRepository
     {

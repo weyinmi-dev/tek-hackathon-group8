@@ -50,6 +50,7 @@
     <Project Path="src/Modules/Energy/Modules.Energy.Infrastructure/Modules.Energy.Infrastructure.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/Architecture.Tests/Architecture.Tests.csproj" />
     <Project Path="tests/Modules.Network.UnitTests/Modules.Network.UnitTests.csproj" />
   </Folder>
   <Folder Name="/tools/">

@@ -1,6 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Domain.Ingestion;
 using SharedKernel;

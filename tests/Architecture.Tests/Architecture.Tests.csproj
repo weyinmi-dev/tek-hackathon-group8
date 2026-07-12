@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="FluentAssertions" Version="6.12.2" />
+  </ItemGroup>
+
+  <!--
+    These references are the subjects under test, not dependencies of the test logic: the tests
+    reflect over each assembly's metadata to assert the Phase 2 §4.2 dependency rules. Every layer
+    a rule mentions must be referenced here, or the rule silently tests nothing.
+
+    Web.Api is deliberately NOT referenced, even though two rules constrain it. Referencing it would
+    force a rebuild of the host on every test run, which fails outright while the app is running
+    (the running process holds a lock on src/Web.Api/bin). The two Web.Api rules are enforced against
+    its source and csproj instead — see WebApiSourceRuleTests.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Domain\Modules.Ai.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Application\Modules.Ai.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Agents\Modules.Ai.Agents.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Ai\Modules.Ai.Infrastructure\Modules.Ai.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Alerts\Modules.Alerts.Application\Modules.Alerts.Application.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Application\Modules.Analytics.Application.csproj" />
+    <ProjectReference Include="..\..\src\Application\Application.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -2,13 +2,12 @@ using System.Security.Claims;
 using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Modules.Ai.Application.Documents.DeleteDocument;
+using Modules.Ai.Application.Documents.DownloadDocument;
 using Modules.Ai.Application.Documents.LinkCloudDocument;
 using Modules.Ai.Application.Documents.ListDocuments;
 using Modules.Ai.Application.Documents.ReindexDocument;
 using Modules.Ai.Application.Documents.UploadDocument;
 using Application.Abstractions.Storage;
-using Modules.Ai.Domain.Documents;
-using Modules.Ai.Domain.Knowledge;
 using Modules.Identity.Application.Authorization;
 using SharedKernel;
 using Web.Api.Extensions;
@@ -139,26 +138,12 @@ public sealed class Documents : IEndpoint
         
         // GET /api/documents/{id}/download → engineer+ can retrieve the original file.
         app.MapGet("documents/{id:guid}/download", [Authorize(Policy = Policies.RequireEngineer)]
-            async (Guid id, IManagedDocumentRepository documents, IDocumentStorageRegistry storage, CancellationToken ct) =>
+            async (Guid id, ISender sender, CancellationToken ct) =>
         {
-            ManagedDocument? doc = await documents.GetByIdAsync(id, ct);
-            if (doc is null) return Results.NotFound();
-            
-            if (!storage.IsAvailable(doc.Source))
-            {
-                return Results.Problem($"Storage provider {doc.Source} is not connected.", statusCode: 400);
-            }
-            
-            try
-            {
-                IDocumentStorageProvider provider = storage.For(doc.Source);
-                Stream stream = await provider.OpenReadAsync(doc.StorageKey, ct);
-                return Results.File(stream, doc.ContentType, doc.FileName);
-            }
-            catch (Exception ex)
-            {
-                return Results.Problem($"Failed to retrieve file from {doc.Source}: {ex.Message}");
-            }
+            Result<DocumentDownload> result = await sender.Send(new DownloadDocumentQuery(id), ct);
+            return result.Match(
+                file => Results.File(file.Content, file.ContentType, file.FileName),
+                CustomResults.Problem);
         })
         .WithTags(Tags.Documents);
     }

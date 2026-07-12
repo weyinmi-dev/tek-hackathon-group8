@@ -1,3 +1,4 @@
+using SharedKernel;
 using Modules.Ai.Application.Rag.Models;
 using Modules.Ai.Domain.Knowledge;
 using Pgvector;

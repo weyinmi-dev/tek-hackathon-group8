@@ -1,3 +1,4 @@
+using SharedKernel;
 using Microsoft.EntityFrameworkCore;
 using Modules.Ai.Application.Rag.Models;
 using Modules.Ai.Application.Rag.Stores;

@@ -1,7 +1,5 @@
 using SharedKernel;
 using Modules.Ai.Application.Rag.Chunking;
-using Modules.Ai.Domain.Documents;
-using Modules.Ai.Domain.Knowledge;
 
 namespace Modules.Ai.Agents.Workflows.DocumentIngestion;
 

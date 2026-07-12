@@ -1,5 +1,5 @@
 using FluentAssertions;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Xunit;
 using static Modules.Network.UnitTests.Ingestion.Decisions.DecisionFixtures;

@@ -1,7 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Modules.Network.Application.Ingestion.Stage2_Analyze;
-using Modules.Network.Application.Ingestion.Stage2_Analyze.Contracts;
+using Application.Abstractions.Pipeline;
 using Modules.Network.Domain.Ingestion;
 using SharedKernel;
 using Xunit;
@@ -41,7 +41,9 @@ public sealed class AnalyzeNetworkBatchCommandHandlerTests
     {
         IngestionRun run = NewRun();
         WalkToAnalyzing(run);
-        var capturedEvents = new List<IReadOnlyList<NetworkEvent>>();
+        // The analyzer contract is module-neutral now (M12): the handler projects its NetworkEvent
+        // entities into NetworkEventSnapshot before calling out, so that projection is asserted here.
+        var capturedEvents = new List<IReadOnlyList<NetworkEventSnapshot>>();
         var fakeAnalyzer = new FakeAnalyzer((id, events) =>
         {
             capturedEvents.Add(events);
@@ -113,10 +115,14 @@ public sealed class AnalyzeNetworkBatchCommandHandlerTests
             Task.FromResult(events);
     }
 
-    private sealed class FakeAnalyzer(Func<Guid, IReadOnlyList<NetworkEvent>, Result<AiAnalysisResult>> respond) : INetworkBatchAnalyzer
+    private sealed class FakeAnalyzer(Func<Guid, IReadOnlyList<NetworkEventSnapshot>, Result<AiAnalysisResult>> respond)
+        : INetworkBatchAnalyzer
     {
         public Task<Result<AiAnalysisResult>> AnalyzeAsync(
-            Guid ingestionRunId, IReadOnlyList<NetworkEvent> events, CancellationToken _ = default) =>
+            Guid ingestionRunId,
+            IReadOnlyList<NetworkEventSnapshot> events,
+            string? mcpFilePath = null,
+            CancellationToken cancellationToken = default) =>
             Task.FromResult(respond(ingestionRunId, events));
     }
 }
