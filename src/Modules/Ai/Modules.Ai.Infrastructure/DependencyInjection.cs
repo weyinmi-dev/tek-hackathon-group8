@@ -33,7 +33,6 @@ using Modules.Ai.Infrastructure.Rag.Stores;
 using Modules.Ai.Infrastructure.Repositories;
 using Modules.Ai.Infrastructure.Configuration;
 using FluentValidation;
-using Modules.Network.Application.Ingestion.Stage2_Analyze;
 using Application.Abstractions.Pipeline;
 using SharedKernel;
 // Microsoft.Extensions.AI also declares an IEmbeddingGenerator; alias the unqualified name to the

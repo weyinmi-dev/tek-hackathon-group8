@@ -24,7 +24,6 @@
     <ProjectReference Include="..\..\..\Application\Application.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\Infrastructure.csproj" />
     <ProjectReference Include="..\..\Network\Modules.Network.Api\Modules.Network.Api.csproj" />
-    <ProjectReference Include="..\..\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
     <ProjectReference Include="..\..\Alerts\Modules.Alerts.Api\Modules.Alerts.Api.csproj" />
     <ProjectReference Include="..\..\Analytics\Modules.Analytics.Api\Modules.Analytics.Api.csproj" />
     <ProjectReference Include="..\..\Energy\Modules.Energy.Api\Modules.Energy.Api.csproj" />
