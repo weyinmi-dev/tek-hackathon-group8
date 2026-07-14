@@ -16,6 +16,8 @@ internal sealed class ApplyPipelineActionsCommandHandler(
     ITowerSnapshotProvider towerSnapshots,
     ITowerRepository towers,
     IAlertActionExecutor alertExecutor,
+    IEnergySyncExecutor energyExecutor,
+    SnapshotSyncApplier snapshotApplier,
     ISender sender,
     IUnitOfWork unitOfWork,
     ILogger<ApplyPipelineActionsCommandHandler> logger)
@@ -43,8 +45,17 @@ internal sealed class ApplyPipelineActionsCommandHandler(
         IReadOnlyDictionary<string, TowerSnapshot> snapshot =
             await towerSnapshots.GetCurrentAsync(cancellationToken);
 
+        // ── Snapshot synchronisation (Network-owned aggregates) ──────────────
+        // Runs first: a snapshot may bring a tower into existence, and the alert and energy work
+        // below is keyed on that tower's code. These stage into NetworkDbContext and are committed
+        // by the SaveChanges at the end of this handler; the Alerts and Energy executors commit
+        // their own contexts, since each module owns its own unit of work.
+        SnapshotSyncCounts sync = await snapshotApplier.ApplyAsync(request.Actions, cancellationToken);
+
         // ── Alert actions ────────────────────────────────────────────────────
-        List<AlertActionRequest> alertRequests = request.Actions
+        // Both the AI-detected anomalies and the OSS-reported alarms converge here, on the same
+        // executor and the same fingerprint-based create-vs-update path.
+        var alertRequests = request.Actions
             .Select(action => TryBuildAlertRequest(action, snapshot))
             .Where(r => r is not null)
             .Select(r => r!)
@@ -61,12 +72,50 @@ internal sealed class ApplyPipelineActionsCommandHandler(
             alertResult = dispatched.Value;
         }
 
+        // ── Alarm clearance ──────────────────────────────────────────────────
+        int alertsResolved = 0;
+        var resolutions = request.Actions
+            .OfType<ResolveAlarmAction>()
+            .Select(a => new AlertResolutionRequest(a.AnomalyFingerprint, a.Reason))
+            .ToList();
+
+        if (resolutions.Count > 0)
+        {
+            Result<int> resolved = await alertExecutor.ResolveAsync(resolutions, cancellationToken);
+            if (resolved.IsFailure)
+            {
+                return Result.Failure<PipelineActionCounts>(resolved.Error);
+            }
+            alertsResolved = resolved.Value;
+        }
+
+        // ── Energy synchronisation ───────────────────────────────────────────
+        EnergySyncResult energyResult = new(0, 0, 0);
+        var energyRequests = request.Actions
+            .OfType<SyncEnergySiteAction>()
+            .Select(a => new EnergySyncRequest(
+                a.SiteCode, a.Name, a.Region, a.BatteryPct, a.DieselPct, a.GridUp,
+                a.SourceWire, a.HasOpenAlarm, a.AnomalyNote, a.ObservedAtUtc))
+            .ToList();
+
+        if (energyRequests.Count > 0)
+        {
+            Result<EnergySyncResult> dispatched = await energyExecutor.ExecuteAsync(energyRequests, cancellationToken);
+            if (dispatched.IsFailure)
+            {
+                return Result.Failure<PipelineActionCounts>(dispatched.Error);
+            }
+            energyResult = dispatched.Value;
+        }
+
         // ── Tower actions ────────────────────────────────────────────────────
         int towerUpdates = 0;
         foreach (UpdateTowerAction action in request.Actions.OfType<UpdateTowerAction>())
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Tower? tower = await towers.GetByCodeAsync(action.TowerCode, cancellationToken);
+
+            // Tracked load: this tower is about to be mutated and committed by the unit of work below.
+            Tower? tower = await towers.GetForUpdateAsync(action.TowerCode, cancellationToken);
             if (tower is null)
             {
                 // Decision engine already filters unknown towers, but defend the invariant.
@@ -113,11 +162,32 @@ internal sealed class ApplyPipelineActionsCommandHandler(
             AlertsCreated: alertResult.AlertsCreated,
             AlertsUpdated: alertResult.AlertsUpdated,
             OptimizationsCreated: optimizationsCreated,
-            TowerUpdates: towerUpdates);
+
+            // Both the AI path (UpdateTowerAction) and the snapshot path (UpsertTowerAction) update
+            // towers; the report counts the tower once however it was touched.
+            TowerUpdates: towerUpdates + sync.TowerUpdates,
+
+            TowersCreated: sync.TowersCreated,
+            AlertsResolved: alertsResolved,
+            SitesCreated: energyResult.SitesCreated,
+            SitesUpdated: energyResult.SitesUpdated,
+            TelemetryRowsAppended: energyResult.TelemetryRowsAppended,
+            EquipmentCreated: sync.EquipmentCreated,
+            EquipmentUpdated: sync.EquipmentUpdated,
+            EquipmentRetired: sync.EquipmentRetired,
+            TicketsCreated: sync.TicketsCreated,
+            TicketsUpdated: sync.TicketsUpdated,
+            TicketsCompleted: sync.TicketsCompleted,
+            TicketsArchived: sync.TicketsArchived,
+            EngineersCreated: sync.EngineersCreated,
+            EngineersUpdated: sync.EngineersUpdated,
+            Warnings: sync.Warnings);
 
         logger.LogInformation(
-            "Run {IngestionRunId}: applied {AlertsCreated} new alerts, {AlertsUpdated} alert recurrences, {TowerUpdates} tower updates",
-            run.Id, counts.AlertsCreated, counts.AlertsUpdated, counts.TowerUpdates);
+            "Run {IngestionRunId}: {Created} created, {Updated} updated, {Archived} archived " +
+            "({AlertsCreated} new alerts, {AlertsResolved} alerts resolved, {TowersCreated} towers created)",
+            run.Id, counts.TotalCreated, counts.TotalUpdated, counts.TotalArchived,
+            counts.AlertsCreated, counts.AlertsResolved, counts.TowersCreated);
 
         return Result.Success(counts);
     }
@@ -130,6 +200,22 @@ internal sealed class ApplyPipelineActionsCommandHandler(
         {
             CreateAlertAction create => Build(create.Source, create.AnomalyFingerprint, existingId: null, towers),
             UpdateAlertAction update => Build(update.Source, update.AnomalyFingerprint, update.ExistingAlertId, towers),
+
+            // An OSS alarm arrives already fully described — the provider told us the severity, the
+            // site, and the cause — so unlike an inferred anomaly there is nothing to look up or
+            // interpret. It carries full confidence because it is a reported fact, not a detection.
+            SyncAlarmAction alarm => new AlertActionRequest(
+                AnomalyFingerprint: alarm.AnomalyFingerprint,
+                ExistingAlertId: alarm.ExistingAlertId,
+                SeverityWire: alarm.SeverityWire,
+                TowerCode: alarm.TowerCode,
+                Region: alarm.Region,
+                Title: alarm.Title,
+                AiCause: alarm.Cause,
+                Confidence: 1.0,
+                SubscribersAffected: 0,
+                DetectedAtUtc: alarm.RaisedAtUtc),
+
             _ => null
         };
     }

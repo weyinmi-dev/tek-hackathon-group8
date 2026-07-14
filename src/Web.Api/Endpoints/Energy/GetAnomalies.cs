@@ -43,7 +43,7 @@ public sealed class GetAnomalies : IEndpoint
                 geoMap = new Dictionary<string, GeoSummary>(StringComparer.OrdinalIgnoreCase);
             }
 
-            List<AnomalyWithGeo> enriched = anomalies
+            var enriched = anomalies
                 .Select(a => AnomalyWithGeo.From(a, geoMap.GetValueOrDefault(a.Site)))
                 .ToList();
             return Results.Ok(new AnomaliesWithGeoResponse(enriched));

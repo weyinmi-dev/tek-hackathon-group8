@@ -132,6 +132,35 @@ public sealed class Alert : Entity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Closes the alert because the condition that raised it is gone — the upstream alarm cleared,
+    /// or an OSS snapshot stopped reporting it.
+    ///
+    /// <see cref="AlertStatus.Resolved"/> has existed since the beginning but nothing could reach
+    /// it: alerts could be acknowledged, assigned and dispatched, never closed. Synchronisation
+    /// needs it, because an alarm that clears upstream must stop showing as live here.
+    ///
+    /// Idempotent — resolving an already-resolved alert is a no-op, so a repeated snapshot that
+    /// keeps omitting the alarm does not keep rewriting the row.
+    /// </summary>
+    public bool Resolve(string reason, DateTime resolvedAtUtc)
+    {
+        if (Status == AlertStatus.Resolved)
+        {
+            return false;
+        }
+
+        Status = AlertStatus.Resolved;
+        LastSeenAtUtc = resolvedAtUtc;
+
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            AiCause = reason;
+        }
+
+        return true;
+    }
+
     public Result Acknowledge(string actor)
     {
         if (Status is AlertStatus.Acknowledged or AlertStatus.Resolved)

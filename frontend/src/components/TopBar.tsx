@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import { NotificationBell } from "./NotificationBell";
 import { ThemeToggle } from "./ThemeToggle";
 
 export function TopBar({ title, sub, right }: { title: string; sub?: string; right?: ReactNode }) {
@@ -24,6 +25,7 @@ export function TopBar({ title, sub, right }: { title: string; sub?: string; rig
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
         {right}
+        <NotificationBell />
         <ThemeToggle />
         <div className="mono" style={{
           display: "flex", alignItems: "center", gap: 8,

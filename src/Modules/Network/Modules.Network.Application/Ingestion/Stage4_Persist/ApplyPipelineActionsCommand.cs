@@ -19,8 +19,47 @@ public sealed record ApplyPipelineActionsCommand(
     public string StageName => "Persist";
 }
 
+/// <summary>
+/// What Stage 4 actually did, per aggregate. Doubles as the synchronisation report the upload UI
+/// renders and the sync-history page stores — "14 created, 3 updated, 1 archived" is this record.
+///
+/// The counts are split created / updated / archived rather than collapsed into a single "changed"
+/// because the distinction is the evidence of idempotency: a second upload of the same document
+/// must show zeroes across the board, and a reader can only see that if the categories are separate.
+/// </summary>
 public sealed record PipelineActionCounts(
     int AlertsCreated,
     int AlertsUpdated,
     int OptimizationsCreated,
-    int TowerUpdates);
+    int TowerUpdates,
+
+    // ── Snapshot synchronisation ────────────────────────────────────────────────
+    int TowersCreated = 0,
+    int AlertsResolved = 0,
+    int SitesCreated = 0,
+    int SitesUpdated = 0,
+    int TelemetryRowsAppended = 0,
+    int EquipmentCreated = 0,
+    int EquipmentUpdated = 0,
+    int EquipmentRetired = 0,
+    int TicketsCreated = 0,
+    int TicketsUpdated = 0,
+    int TicketsCompleted = 0,
+    int TicketsArchived = 0,
+    int EngineersCreated = 0,
+    int EngineersUpdated = 0,
+    IReadOnlyList<string>? Warnings = null)
+{
+    /// <summary>
+    /// Non-fatal problems worth surfacing: a snapshot referencing a tower we skipped, an alarm with
+    /// no id. These do not fail the run — a feed is allowed to be imperfect — but they must not be
+    /// swallowed either, or a partially-applied sync would look like a clean one.
+    /// </summary>
+    public IReadOnlyList<string> Warnings { get; init; } = Warnings ?? [];
+
+    public int TotalCreated => TowersCreated + SitesCreated + EquipmentCreated + TicketsCreated + EngineersCreated + AlertsCreated;
+
+    public int TotalUpdated => TowerUpdates + SitesUpdated + EquipmentUpdated + TicketsUpdated + EngineersUpdated + AlertsUpdated;
+
+    public int TotalArchived => EquipmentRetired + TicketsArchived + AlertsResolved;
+}

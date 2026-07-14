@@ -15,7 +15,7 @@ internal sealed class CsvNetworkLogParser : INetworkLogParser
         contentType.Contains("csv", StringComparison.OrdinalIgnoreCase) ||
         fileName.EndsWith(".csv", StringComparison.OrdinalIgnoreCase);
 
-    public async Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    public async Task<Result<NetworkLogParseResult>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
         CancellationToken cancellationToken = default) =>
@@ -29,7 +29,7 @@ internal sealed class CsvNetworkLogParser : INetworkLogParser
 /// </summary>
 internal static class DelimitedRowParser
 {
-    public static async Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    public static async Task<Result<NetworkLogParseResult>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
         string delimiter,
@@ -50,7 +50,7 @@ internal static class DelimitedRowParser
 
         if (!await csv.ReadAsync().ConfigureAwait(false))
         {
-            return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile());
+            return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile());
         }
 
         csv.ReadHeader();
@@ -59,7 +59,7 @@ internal static class DelimitedRowParser
         Result<HeaderIndex> headerResult = HeaderIndex.Build(headers);
         if (headerResult.IsFailure)
         {
-            return Result.Failure<IReadOnlyList<NetworkEvent>>(headerResult.Error);
+            return Result.Failure<NetworkLogParseResult>(headerResult.Error);
         }
 
         HeaderIndex idx = headerResult.Value;
@@ -74,7 +74,7 @@ internal static class DelimitedRowParser
             Result<NetworkEvent> rowResult = idx.BuildEvent(ingestionRunId, csv, rowNumber);
             if (rowResult.IsFailure)
             {
-                return Result.Failure<IReadOnlyList<NetworkEvent>>(rowResult.Error);
+                return Result.Failure<NetworkLogParseResult>(rowResult.Error);
             }
 
             events.Add(rowResult.Value);
@@ -82,10 +82,10 @@ internal static class DelimitedRowParser
 
         if (events.Count == 0)
         {
-            return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile());
+            return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile());
         }
 
-        return Result.Success<IReadOnlyList<NetworkEvent>>(events);
+        return Result.Success(NetworkLogParseResult.FromEvents(events));
     }
 }
 

@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Modules.Alerts.Application.Pipeline;
+using Modules.Alerts.Domain;
 using Modules.Alerts.Domain.Alerts;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
 using SharedKernel;
@@ -17,8 +18,55 @@ namespace Modules.Alerts.Infrastructure.Pipeline;
 /// </summary>
 internal sealed class AlertActionExecutor(
     ISender sender,
+    IAlertRepository alerts,
+    IUnitOfWork unitOfWork,
     ILogger<AlertActionExecutor> logger) : IAlertActionExecutor
 {
+    /// <summary>
+    /// Closes alerts whose upstream alarm has cleared. Goes through the repository rather than a
+    /// MediatR command because there is no operator here — this is the pipeline reconciling our
+    /// state with the provider's, not a person acknowledging anything.
+    ///
+    /// Saves AlertsDbContext itself. Stage 4's unit of work is Network's and commits only
+    /// NetworkDbContext, so a resolve left uncommitted here would be silently dropped — the same
+    /// reason <c>CreateOrUpdateAlertCommandHandler</c> saves its own context on the create path.
+    /// </summary>
+    public async Task<Result<int>> ResolveAsync(
+        IReadOnlyList<AlertResolutionRequest> resolutions,
+        CancellationToken cancellationToken = default)
+    {
+        int resolved = 0;
+
+        foreach (AlertResolutionRequest resolution in resolutions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Alert? alert = await alerts.GetActiveByFingerprintAsync(
+                resolution.AnomalyFingerprint, cancellationToken);
+
+            // Already resolved, or never existed. Either way there is nothing to close — a snapshot
+            // that keeps omitting a long-cleared alarm must stay a no-op.
+            if (alert is null)
+            {
+                continue;
+            }
+
+            if (alert.Resolve(resolution.Reason, DateTime.UtcNow))
+            {
+                resolved++;
+                logger.LogInformation(
+                    "Alert {AlertCode} resolved — {Reason}", alert.Code, resolution.Reason);
+            }
+        }
+
+        if (resolved > 0)
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return Result.Success(resolved);
+    }
+
     public async Task<Result<AlertActionsResult>> ExecuteAsync(
         IReadOnlyList<AlertActionRequest> requests,
         CancellationToken cancellationToken = default)

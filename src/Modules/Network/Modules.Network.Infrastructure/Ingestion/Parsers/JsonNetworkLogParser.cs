@@ -6,12 +6,17 @@ using SharedKernel;
 namespace Modules.Network.Infrastructure.Ingestion.Parsers;
 
 /// <summary>
-/// Parses JSON in either form:
+/// The single entry point for JSON uploads. Routes on the shape of the root element:
 /// <list type="bullet">
 ///   <item>Top-level array of row objects: <c>[ { "timestamp": "...", "tower_code": "..." }, ... ]</c></item>
 ///   <item>Envelope: <c>{ "events": [ ... ] }</c> — useful when callers want to attach metadata alongside rows.</item>
+///   <item>Site snapshot: <c>{ "site": { ... }, "performanceMetrics": { ... } }</c>, or a batch of them under
+///         <c>{ "snapshots": [ ... ] }</c> — handed to <see cref="SiteSnapshotDecoder"/>.</item>
 /// </list>
-/// Field names are matched case-insensitively against <see cref="NetworkLogColumns"/>.
+/// Routing on content rather than on file name is deliberate: both feeds arrive as <c>.json</c> with the same
+/// content type, so a second registry entry could only be ordered ahead of this one and would swallow the flat
+/// logs it does not understand.
+/// Field names in the row forms are matched case-insensitively against <see cref="NetworkLogColumns"/>.
 /// </summary>
 internal sealed class JsonNetworkLogParser : INetworkLogParser
 {
@@ -30,7 +35,7 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
         fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase) ||
         fileName.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase);
 
-    public async Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    public async Task<Result<NetworkLogParseResult>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
         CancellationToken cancellationToken = default)
@@ -45,11 +50,20 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
             // Treat malformed JSON as a malformed file rather than attempting a
             // blind JSONL fallback — callers should upload JSONL explicitly.
             if (content.CanSeek) content.Seek(0, SeekOrigin.Begin);
-            return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.MalformedFile("invalid JSON"));
+            return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.MalformedFile("invalid JSON"));
         }
 
         using (doc)
         {
+            // A full OSS site snapshot is a document, not a row list: it carries equipment,
+            // alarms, maintenance and environment that have no column in a flat log. Route on
+            // the root shape so both feeds share one JSON entry point — flat arrays and the
+            // { "events": [...] } envelope keep their original path byte for byte.
+            if (SiteSnapshotDecoder.IsSnapshotDocument(doc.RootElement))
+            {
+                return SiteSnapshotDecoder.Decode(ingestionRunId, doc.RootElement);
+            }
+
             JsonElement rowsElement = doc.RootElement.ValueKind switch
             {
                 JsonValueKind.Array => doc.RootElement,
@@ -60,15 +74,16 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
 
             if (rowsElement.ValueKind != JsonValueKind.Array)
             {
-                return Result.Failure<IReadOnlyList<NetworkEvent>>(
+                return Result.Failure<NetworkLogParseResult>(
                     NetworkLogErrors.MalformedFile(
-                        "expected a top-level array, an object with an 'events' array property, or newline-delimited JSON objects"));
+                        "expected a top-level array, an object with an 'events' array property, " +
+                        "or a site snapshot with a 'site' object"));
             }
 
             int arrayLength = rowsElement.GetArrayLength();
             if (arrayLength == 0)
             {
-                return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile());
+                return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile());
             }
 
             var events = new List<NetworkEvent>(arrayLength);
@@ -81,24 +96,24 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
 
                 if (row.ValueKind != JsonValueKind.Object)
                 {
-                    return Result.Failure<IReadOnlyList<NetworkEvent>>(
+                    return Result.Failure<NetworkLogParseResult>(
                         NetworkLogErrors.MalformedRow(rowNumber, "expected an object"));
                 }
 
                 Result<NetworkEvent> rowResult = BuildEvent(ingestionRunId, row, rowNumber);
                 if (rowResult.IsFailure)
                 {
-                    return Result.Failure<IReadOnlyList<NetworkEvent>>(rowResult.Error);
+                    return Result.Failure<NetworkLogParseResult>(rowResult.Error);
                 }
 
                 events.Add(rowResult.Value);
             }
 
-            return Result.Success<IReadOnlyList<NetworkEvent>>(events);
+            return Result.Success(NetworkLogParseResult.FromEvents(events));
         }
     }
 
-    private static async Task<Result<IReadOnlyList<NetworkEvent>>> ParseJsonlAsync(
+    private static async Task<Result<NetworkLogParseResult>> ParseJsonlAsync(
         Guid ingestionRunId,
         Stream content,
         CancellationToken cancellationToken)
@@ -123,20 +138,20 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
             }
             catch (JsonException ex)
             {
-                return Result.Failure<IReadOnlyList<NetworkEvent>>(
+                return Result.Failure<NetworkLogParseResult>(
                     NetworkLogErrors.MalformedRow(rowNumber, $"invalid JSON: {ex.Message}"));
             }
 
             if (element.ValueKind != JsonValueKind.Object)
             {
-                return Result.Failure<IReadOnlyList<NetworkEvent>>(
+                return Result.Failure<NetworkLogParseResult>(
                     NetworkLogErrors.MalformedRow(rowNumber, "expected an object"));
             }
 
             Result<NetworkEvent> rowResult = BuildEvent(ingestionRunId, element, rowNumber);
             if (rowResult.IsFailure)
             {
-                return Result.Failure<IReadOnlyList<NetworkEvent>>(rowResult.Error);
+                return Result.Failure<NetworkLogParseResult>(rowResult.Error);
             }
 
             events.Add(rowResult.Value);
@@ -144,10 +159,10 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
 
         if (events.Count == 0)
         {
-            return Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile());
+            return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile());
         }
 
-        return Result.Success<IReadOnlyList<NetworkEvent>>(events);
+        return Result.Success(NetworkLogParseResult.FromEvents(events));
     }
 
     private static Result<NetworkEvent> BuildEvent(Guid ingestionRunId, JsonElement row, int rowNumber)

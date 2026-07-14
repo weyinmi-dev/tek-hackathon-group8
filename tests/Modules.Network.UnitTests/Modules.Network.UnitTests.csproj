@@ -47,6 +47,10 @@
     <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Domain\Modules.Analytics.Domain.csproj" />
     <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Application\Modules.Analytics.Application.csproj" />
     <ProjectReference Include="..\..\src\Modules\Analytics\Modules.Analytics.Infrastructure\Modules.Analytics.Infrastructure.csproj" />
+    <!-- Snapshot synchronisation reaches Energy through IEnergySyncExecutor: the e2e test wires the
+         real executor so an upload is proven to land in the Site aggregate and the SiteEnergyLog. -->
+    <ProjectReference Include="..\..\src\Modules\Energy\Modules.Energy.Domain\Modules.Energy.Domain.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Energy\Modules.Energy.Infrastructure\Modules.Energy.Infrastructure.csproj" />
     <!-- Application has the MediatR pipeline behaviors. -->
     <ProjectReference Include="..\..\src\Application\Application.csproj" />
   </ItemGroup>

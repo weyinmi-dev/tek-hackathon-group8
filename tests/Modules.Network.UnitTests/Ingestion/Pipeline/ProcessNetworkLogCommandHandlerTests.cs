@@ -142,7 +142,18 @@ public sealed class ProcessNetworkLogCommandHandlerTests
         IngestionRun run = repo.Runs.Should().ContainSingle().Subject;
         run.Status.Should().Be(IngestionStatus.Failed);
         run.FailureReason.Should().Contain("AiSchemaInvalid");
-        bus.Published.Should().BeEmpty();
+
+        // A failed run publishes no *completion* event — nothing downstream may project a run that
+        // did not finish. It does publish a failure event, because a synchronisation that stopped
+        // landing is precisely what an operator needs to be told about; previously this was silent.
+        bus.Published.Should().NotContain(e => e is PipelineCompletedNotification);
+
+        PipelineFailedNotification failed = bus.Published
+            .OfType<PipelineFailedNotification>()
+            .Should().ContainSingle().Subject;
+
+        failed.IngestionRunId.Should().Be(run.Id);
+        failed.Reason.Should().Contain("AiSchemaInvalid");
     }
 
     [Fact]
@@ -209,7 +220,7 @@ public sealed class ProcessNetworkLogCommandHandlerTests
             Task.FromResult<string?>(null);
     }
 
-    private sealed class InMemoryRunRepo : IIngestionRunRepository
+    private sealed class InMemoryRunRepo : FakeSnapshotStore, IIngestionRunRepository
     {
         public List<IngestionRun> Runs { get; } = [];
 

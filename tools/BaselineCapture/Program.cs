@@ -408,7 +408,8 @@ static async Task<int> RunAgentSmokeAsync()
         new EnergyTools(sender),
         new KnowledgeTools(sender),
         new DocumentTools(sender),
-        new GeoTools(sender)).Build();
+        new GeoTools(sender),
+        new SiteSyncTools(sender)).Build();
 
     AgentResponse response = await agent.RunAsync("What is the status of TWR-LEK-003?");
     string text = response.ToString() ?? string.Empty;

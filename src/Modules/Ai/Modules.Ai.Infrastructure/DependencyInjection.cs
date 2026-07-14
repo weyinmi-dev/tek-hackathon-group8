@@ -128,6 +128,7 @@ public static class DependencyInjection
         services.AddScoped<Modules.Ai.Agents.Tools.DocumentTools>();
         // Geo (M4): the agent layer talks to the Application port; the OSM client stays behind it.
         services.AddScoped<Modules.Ai.Agents.Tools.GeoTools>();
+        services.AddScoped<Modules.Ai.Agents.Tools.SiteSyncTools>();
         services.AddScoped<Modules.Ai.Application.Geo.IGeoContextProvider,
             Modules.Ai.Infrastructure.Geo.OsmGeoContextProvider>();
         services.AddScoped<Modules.Ai.Agents.Memory.PostgresChatHistoryProvider>();

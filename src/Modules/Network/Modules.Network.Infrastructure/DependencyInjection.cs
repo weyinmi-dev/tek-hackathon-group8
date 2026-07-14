@@ -5,7 +5,9 @@ using Modules.Network.Api;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Domain;
+using Modules.Network.Domain.Assets;
 using Modules.Network.Domain.Ingestion;
+using Modules.Network.Domain.Maintenance;
 using Modules.Network.Domain.Optimizations;
 using Modules.Network.Domain.Towers;
 using Modules.Network.Infrastructure.Api;
@@ -31,6 +33,9 @@ public static class DependencyInjection
         services.AddScoped<ITowerRepository, TowerRepository>();
         services.AddScoped<IIngestionRunRepository, IngestionRunRepository>();
         services.AddScoped<IOptimizationRepository, OptimizationRepository>();
+        services.AddScoped<ISiteEquipmentRepository, SiteEquipmentRepository>();
+        services.AddScoped<IMaintenanceTicketRepository, MaintenanceTicketRepository>();
+        services.AddScoped<IEngineerRepository, EngineerRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<INetworkApi, NetworkApi>();
 

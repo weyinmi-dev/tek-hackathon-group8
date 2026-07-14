@@ -1,10 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- The e2e pipeline test wires the real EnergySyncExecutor + UnitOfWork, both internal. -->
+    <InternalsVisibleTo Include="Modules.Network.UnitTests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\Application\Application.csproj" />
     <ProjectReference Include="..\..\..\Infrastructure\Infrastructure.csproj" />
     <ProjectReference Include="..\Modules.Energy.Api\Modules.Energy.Api.csproj" />
     <ProjectReference Include="..\Modules.Energy.Application\Modules.Energy.Application.csproj" />
+    <!-- Stage-4 sync port: IEnergySyncExecutor is declared in Network.Application (where it is
+         consumed) and implemented here (where the Site aggregate lives). Same shape as
+         Alerts.Infrastructure implementing IAlertActionExecutor. -->
+    <ProjectReference Include="..\..\Network\Modules.Network.Application\Modules.Network.Application.csproj" />
   </ItemGroup>
 
 </Project>

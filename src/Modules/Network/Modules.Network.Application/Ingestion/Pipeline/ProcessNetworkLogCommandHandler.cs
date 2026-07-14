@@ -59,7 +59,11 @@ internal sealed class ProcessNetworkLogCommandHandler(
             logger.LogInformation(
                 "Ingestion short-circuited — content hash {ContentHash} already processed as run {IngestionRunId}",
                 contentHash, prior.Id);
-            return Result.Success(BuildSummary(prior, deduplicatedFromPriorRun: true));
+
+            IReadOnlyList<SiteSnapshotRecord> priorSnapshots =
+                await runs.ListSnapshotsAsync(prior.Id, cancellationToken);
+
+            return Result.Success(BuildSummary(prior, deduplicatedFromPriorRun: true, priorSnapshots));
         }
 
         // 3. Create the run. SaveChanges immediately so subsequent stage handlers can find it by ID.
@@ -144,6 +148,10 @@ internal sealed class ProcessNetworkLogCommandHandler(
 
             PipelineActionCounts counts = persistResult.Value;
             int anomaliesDetected = counts.AlertsCreated + counts.AlertsUpdated;
+
+            IReadOnlyList<SiteSnapshotRecord> syncedSnapshots =
+                await runs.ListSnapshotsAsync(run.Id, cancellationToken);
+
             await eventBus.PublishAsync(new PipelineCompletedNotification(
                 Id: Guid.NewGuid(),
                 IngestionRunId: run.Id,
@@ -154,8 +162,16 @@ internal sealed class ProcessNetworkLogCommandHandler(
                 AlertsCreated: counts.AlertsCreated,
                 AlertsUpdated: counts.AlertsUpdated,
                 OptimizationsCreated: counts.OptimizationsCreated,
-                TopologyChanged: counts.TowerUpdates > 0,
-                CompletedAt: DateTimeOffset.UtcNow), cancellationToken);
+                TopologyChanged: counts.TowerUpdates > 0 || counts.TowersCreated > 0,
+                CompletedAt: DateTimeOffset.UtcNow,
+                RecordsCreated: counts.TotalCreated,
+                RecordsUpdated: counts.TotalUpdated,
+                RecordsArchived: counts.TotalArchived,
+                CriticalAlertsRaised: counts.AlertsCreated,
+                WarningCount: counts.Warnings.Count,
+                SubmittedBy: request.SubmittedBy,
+                SiteCodes: syncedSnapshots.Select(s => s.SiteCode).Distinct().ToList()),
+                cancellationToken);
 
             DateTimeOffset projectEnded = DateTimeOffset.UtcNow;
             run.RecordStageTiming(new StageTiming(
@@ -169,18 +185,26 @@ internal sealed class ProcessNetworkLogCommandHandler(
                     AlertsCreated: counts.AlertsCreated,
                     AlertsUpdated: counts.AlertsUpdated,
                     OptimizationsCreated: counts.OptimizationsCreated,
-                    TopologyChanged: counts.TowerUpdates > 0),
+                    TopologyChanged: counts.TowerUpdates > 0 || counts.TowersCreated > 0,
+                    RecordsCreated: counts.TotalCreated,
+                    RecordsUpdated: counts.TotalUpdated,
+                    RecordsArchived: counts.TotalArchived,
+                    TelemetryRowsAppended: counts.TelemetryRowsAppended,
+                    Warnings: counts.Warnings),
                 completedAt: DateTimeOffset.UtcNow);
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
 
             logger.LogInformation(
-                "Ingestion run {IngestionRunId} completed: {Anomalies} anomalies, " +
-                "{AlertsCreated}/{AlertsUpdated} alerts created/updated, {Optimizations} optimizations, {TowerUpdates} tower updates",
-                run.Id, anomaliesDetected, counts.AlertsCreated, counts.AlertsUpdated,
-                counts.OptimizationsCreated, counts.TowerUpdates);
+                "Ingestion run {IngestionRunId} completed: {Created} created, {Updated} updated, " +
+                "{Archived} archived, {Anomalies} anomalies, {Optimizations} optimizations, {Warnings} warning(s)",
+                run.Id, counts.TotalCreated, counts.TotalUpdated, counts.TotalArchived,
+                anomaliesDetected, counts.OptimizationsCreated, counts.Warnings.Count);
 
-            return Result.Success(BuildSummary(run, deduplicatedFromPriorRun: false));
+            IReadOnlyList<SiteSnapshotRecord> synced =
+                await runs.ListSnapshotsAsync(run.Id, cancellationToken);
+
+            return Result.Success(BuildSummary(run, deduplicatedFromPriorRun: false, synced));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -242,6 +266,25 @@ internal sealed class ProcessNetworkLogCommandHandler(
             "Ingestion run {IngestionRunId} failed: {ErrorCode} {ErrorDescription}",
             run.Id, error.Code, error.Description);
 
+        // A failed run publishes no completion event, so without this a synchronisation failure would
+        // be silent to everything downstream — the operator would see the feed simply stop landing.
+        // Publishing must not itself fail the run: the caller already has the error, and losing the
+        // notification is strictly better than masking the real failure with a second one.
+        try
+        {
+            await eventBus.PublishAsync(new PipelineFailedNotification(
+                Id: Guid.NewGuid(),
+                IngestionRunId: run.Id,
+                FileName: run.FileName,
+                Reason: $"{error.Code}: {error.Description}",
+                SubmittedBy: run.SubmittedBy,
+                FailedAt: DateTimeOffset.UtcNow), cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Failed to publish the failure notification for run {IngestionRunId}", run.Id);
+        }
+
         return Result.Failure<IngestionRunSummary>(error);
     }
 
@@ -259,7 +302,15 @@ internal sealed class ProcessNetworkLogCommandHandler(
         return buffer.ToArray();
     }
 
-    private static IngestionRunSummary BuildSummary(IngestionRun run, bool deduplicatedFromPriorRun) =>
+    /// <summary>
+    /// Projects a run onto the report the caller sees. Shared by the live path and the
+    /// short-circuit path so a deduplicated re-upload reports exactly what the original run did —
+    /// the user gets the same report either way, plus the flag telling them why nothing changed.
+    /// </summary>
+    public static IngestionRunSummary BuildSummary(
+        IngestionRun run,
+        bool deduplicatedFromPriorRun,
+        IReadOnlyList<SiteSnapshotRecord>? snapshots = null) =>
         new(
             IngestionRunId: run.Id,
             ContentHash: run.ContentHash,
@@ -272,5 +323,37 @@ internal sealed class ProcessNetworkLogCommandHandler(
             TopologyChanged: run.TopologyChanged,
             DeduplicatedFromPriorRun: deduplicatedFromPriorRun,
             StageTimings: run.StageTimings,
-            FailureReason: run.FailureReason);
+            FailureReason: run.FailureReason,
+            RecordsCreated: run.RecordsCreated,
+            RecordsUpdated: run.RecordsUpdated,
+            RecordsArchived: run.RecordsArchived,
+            TelemetryRowsAppended: run.TelemetryRowsAppended,
+            Warnings: SplitWarnings(run.Warnings),
+            SyncedSites: (snapshots ?? []).Select(ToSyncedSite).ToList(),
+            FileName: run.FileName,
+            SubmittedBy: run.SubmittedBy,
+            StartedAt: run.StartedAt,
+            CompletedAt: run.CompletedAt,
+            DurationMs: run.Duration?.TotalMilliseconds);
+
+    private static IReadOnlyList<string> SplitWarnings(string? warnings) =>
+        string.IsNullOrWhiteSpace(warnings)
+            ? []
+            : warnings.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static SyncedSiteSummary ToSyncedSite(SiteSnapshotRecord s) =>
+        new(
+            SiteCode: s.SiteCode,
+            SiteName: s.SiteName,
+            SiteId: s.SiteId,
+            Region: s.Region,
+            Provider: s.Provider,
+            Environment: s.Environment,
+            Vendor: s.Vendor,
+            Technologies: s.Technologies,
+            HealthScore: s.HealthScore,
+            RequestId: s.RequestId,
+            SnapshotVersion: s.SnapshotVersion,
+            GeneratedAt: s.GeneratedAt,
+            CapturedAt: s.CapturedAt);
 }

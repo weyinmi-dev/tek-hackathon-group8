@@ -1,13 +1,13 @@
 # TelcoPilot — full-stack docker compose
 #
 # Five services, ONE Docker network. The modular-monolith backend is a single
-# container; nginx is the only public-facing port (80). Postgres + Redis are
-# infra; document storage is a named volume so uploaded RAG documents survive
-# `docker compose down`.
+# container; nginx is the only public-facing port (8080 on the host). Postgres +
+# Redis are infra; document storage is a named volume so uploaded RAG documents
+# survive `docker compose down`.
 #
 # Quickstart:
-#   cp .env.example .env        # then edit Ai__* + Jwt__Secret if you want real Azure OpenAI
-#   docker compose up --build   # http://localhost  (login screen)
+#   cp .env.example .env             # then edit Ai__* + Jwt__Secret if you want real Azure OpenAI
+#   docker compose up --build        # http://localhost:8080  (login screen)
 #
 # Demo login:  oluwaseun.a@telco.lag  /  Telco!2025
 
@@ -45,7 +45,9 @@ services:
       - frontend
       - backend
     ports:
-      - "80:80"
+      # Host port is 8080, not 80: IIS (W3SVC) reserves :80 via http.sys on Windows,
+      # so a 80:80 mapping fails to bind. Override with HTTP_PORT in .env if 8080 clashes.
+      - "${HTTP_PORT:-8080}:80"
     volumes:
       - ./deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     networks: [tekhack-net]
@@ -74,6 +76,13 @@ services:
       - ASPNETCORE_URLS=http://+:8080
       - ConnectionStrings__telcopilot=Host=postgres;Port=5432;Database=telcopilot;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
       - ConnectionStrings__Cache=redis:6379
+      # Schema bootstrap + demo seed. The compose stack starts against an empty Postgres
+      # volume, so these must be on regardless of ASPNETCORE_ENVIRONMENT — otherwise a
+      # Production container boots with no tables and every request 500s. Both are
+      # idempotent, so leaving them on across restarts is safe. Set to false once you
+      # manage schema out-of-band.
+      - Database__AutoMigrate=${DB_AUTO_MIGRATE:-true}
+      - Database__SeedData=${DB_SEED_DATA:-true}
       # JWT — SET Jwt__Secret to a 32+char random in .env for anything beyond local dev
       - Jwt__Secret=${JWT_SECRET:-dev-secret-replace-with-32+char-random-via-env-please}
       - Jwt__Issuer=telcopilot

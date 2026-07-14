@@ -24,6 +24,7 @@ const NAV: NavItem[] = [
   { id: "/map",       label: "Network Map",    icon: "◎", section: "OPS" },
   { id: "/alerts",    label: "Alerts",         icon: "△", section: "OPS" },
   { id: "/documents", label: "Knowledge & Logs", icon: "❒", section: "OPS" },
+  { id: "/sync",      label: "Synchronization", icon: "⇄", section: "OPS" },
   { id: "/energy",    label: "Energy Sites",   icon: "⚡", section: "ENERGY" },
   { id: "/anomalies", label: "Anomalies",      icon: "⚠", section: "ENERGY" },
   { id: "/optimize",  label: "Optimization",   icon: "∿", section: "ENERGY" },
