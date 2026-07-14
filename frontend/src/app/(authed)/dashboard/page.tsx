@@ -1,16 +1,21 @@
 "use client";
 
+import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { TopBar } from "@/components/TopBar";
 import { NetworkMap } from "@/components/NetworkMap";
 import { Card, KPI, Pill } from "@/components/UI";
 import { Copilot } from "@/components/Copilot";
 import { api } from "@/lib/api";
+import { useSyncStore } from "@/lib/stores/StoreProvider";
 import type { Alert, MapResponse, MetricsResponse, Tower } from "@/lib/types";
 
 const SPARK_COLORS = ["var(--accent)", "var(--warn)", "var(--crit)", "var(--info)", "var(--crit)", "var(--accent)"];
 
-export default function CommandCenterPage() {
+function CommandCenterPage() {
+  // Re-fetch when an upload lands anywhere in the app — SyncStore bumps `version` and every
+  // page that renders synchronised data reloads itself. No manual refresh, no websocket.
+  const sync = useSyncStore();
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [map, setMap] = useState<MapResponse | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -52,7 +57,7 @@ export default function CommandCenterPage() {
     void load();
     const i = setInterval(() => void load(), 30_000);
     return () => { alive = false; clearInterval(i); };
-  }, []);
+  }, [sync.version]);
 
   const sparks = metrics?.sparks;
   const sparkBy = (i: number): number[] => {
@@ -140,3 +145,5 @@ export default function CommandCenterPage() {
     </>
   );
 }
+
+export default observer(CommandCenterPage);

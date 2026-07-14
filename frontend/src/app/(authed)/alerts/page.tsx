@@ -8,12 +8,13 @@ import { Btn, Card, Pill, Section } from "@/components/UI";
 import { GeoBadge } from "@/components/GeoBadge";
 import { useAuth } from "@/lib/auth";
 import { isManager } from "@/lib/rbac";
-import { useAlertsStore } from "@/lib/stores/StoreProvider";
+import { useAlertsStore, useSyncStore } from "@/lib/stores/StoreProvider";
 import type { Alert } from "@/lib/types";
 
 const AlertsPage = observer(function AlertsPage() {
   const router = useRouter();
   const store = useAlertsStore();
+  const sync = useSyncStore();
   const { user } = useAuth();
 
   // Re-fetch whenever the persisted filter changes. The store decides which alert
@@ -25,7 +26,7 @@ const AlertsPage = observer(function AlertsPage() {
     void store.load();
     const id = setInterval(() => void store.load(), 30_000);
     return () => clearInterval(id);
-  }, [store, store.filter]);
+  }, [store, store.filter, sync.version]);
 
   async function assign(a: Alert): Promise<void> {
     const team = window.prompt(`Assign ${a.id} to which NOC team?`, a.assignedTeam ?? "field-team-3")?.trim();

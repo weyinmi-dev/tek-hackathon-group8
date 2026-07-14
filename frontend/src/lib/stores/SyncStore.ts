@@ -67,6 +67,31 @@ export class SyncStore {
     this.selectedRunId = runId;
   }
 
+  /**
+   * Selects a run by id, fetching it if it is not on the currently loaded page.
+   *
+   * A notification can deep-link to an upload from weeks ago, which the first 50 rows of history
+   * will not contain — selecting it without fetching would silently show nothing.
+   */
+  async selectById(runId: string): Promise<void> {
+    this.selectedRunId = runId;
+
+    if (this.runs.some((r) => r.ingestionRunId === runId)) return;
+
+    try {
+      const run = await api.network.ingestionRun(runId);
+      runInAction(() => {
+        if (!this.runs.some((r) => r.ingestionRunId === run.ingestionRunId)) {
+          this.runs = [run, ...this.runs];
+        }
+      });
+    } catch {
+      runInAction(() => {
+        this.selectedRunId = null;
+      });
+    }
+  }
+
   async loadRuns(): Promise<void> {
     this.loading = true;
     this.error = null;

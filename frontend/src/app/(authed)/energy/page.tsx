@@ -8,7 +8,7 @@ import { GeoBadge } from "@/components/GeoBadge";
 import { SiteDieselChart } from "@/components/EnergyCharts";
 import { useAuth } from "@/lib/auth";
 import { isEngineer } from "@/lib/rbac";
-import { useEnergyStore } from "@/lib/stores/StoreProvider";
+import { useEnergyStore, useSyncStore } from "@/lib/stores/StoreProvider";
 import type { EnergyHealthFilter } from "@/lib/stores/EnergyStore";
 import type { EnergySiteDto } from "@/lib/types";
 
@@ -29,6 +29,7 @@ const KPI_COLORS = ["var(--accent)", "var(--accent)", "#f5d76e", "var(--info)", 
 
 const EnergyPage = observer(function EnergyPage() {
   const store = useEnergyStore();
+  const sync = useSyncStore();
   const { user } = useAuth();
   const canMutate = isEngineer(user?.role);
 
@@ -38,6 +39,12 @@ const EnergyPage = observer(function EnergyPage() {
     store.startAutoRefresh();
     return () => store.stopAutoRefresh();
   }, [store]);
+
+  // A Site Snapshot upload writes the site's battery, fuel and grid state plus a telemetry row,
+  // so the fleet table and the diesel trace are stale the moment one lands.
+  useEffect(() => {
+    if (sync.version > 0) void store.refresh();
+  }, [store, sync.version]);
 
   // Refresh the diesel trace whenever the persisted selection changes — this
   // covers tab-switch-back, where the store may have a selection but no trace.

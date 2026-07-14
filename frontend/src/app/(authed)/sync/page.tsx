@@ -2,7 +2,8 @@
 
 import { observer } from "mobx-react-lite";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
 import { Card, Pill } from "@/components/UI";
 import { SyncReport, formatDuration } from "@/components/SyncReport";
 import { TopBar } from "@/components/TopBar";
@@ -22,6 +23,11 @@ function SyncPage() {
   const sync = useSyncStore();
   const [tab, setTab] = useState<Tab>("runs");
 
+  // Notifications deep-link here as /sync?run=<id>. Honour it so clicking "Synchronised LAG0456"
+  // opens that upload's report rather than dumping the operator at the top of the list.
+  const params = useSearchParams();
+  const runParam = params.get("run");
+
   useEffect(() => {
     void sync.loadRuns();
   }, [sync]);
@@ -30,6 +36,10 @@ function SyncPage() {
   useEffect(() => {
     if (sync.version > 0) void sync.loadRuns();
   }, [sync, sync.version]);
+
+  useEffect(() => {
+    if (runParam) void sync.selectById(runParam);
+  }, [sync, runParam]);
 
   const selected = sync.selectedRun;
 
@@ -413,4 +423,16 @@ function formatWhen(iso: string | null): string {
   });
 }
 
-export default observer(SyncPage);
+const ObservedSyncPage = observer(SyncPage);
+
+/**
+ * useSearchParams() opts a route into client-side rendering, which Next requires be wrapped in a
+ * Suspense boundary — without it the build fails rather than degrading.
+ */
+export default function SyncPageRoute() {
+  return (
+    <Suspense fallback={<Empty>Loading…</Empty>}>
+      <ObservedSyncPage />
+    </Suspense>
+  );
+}

@@ -1,14 +1,19 @@
 "use client";
 
+import { observer } from "mobx-react-lite";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { TopBar } from "@/components/TopBar";
 import { NetworkMap, type MapMode } from "@/components/NetworkMap";
 import { Bar, Btn, Card, Pill, Section } from "@/components/UI";
 import { api } from "@/lib/api";
+import { useSyncStore } from "@/lib/stores/StoreProvider";
 import type { GeoSummary, MapResponse, Tower } from "@/lib/types";
 
-export default function MapPage() {
+function MapPage() {
+  // Markers, health colours and the alert summary all come from the tower set — an upload can move
+  // any of them, so the map re-fetches when one lands rather than waiting out its 30s poll.
+  const sync = useSyncStore();
   const router = useRouter();
   const [data, setData] = useState<MapResponse | null>(null);
   const [sel, setSel] = useState<Tower | null>(null);
@@ -29,7 +34,7 @@ export default function MapPage() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [sync.version]);
 
   useEffect(() => {
     setDispatched(null);
@@ -425,3 +430,5 @@ function Metric({
     </div>
   );
 }
+
+export default observer(MapPage);

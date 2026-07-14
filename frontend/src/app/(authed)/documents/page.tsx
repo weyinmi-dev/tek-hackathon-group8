@@ -4,9 +4,11 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, Pill, Section } from "@/components/UI";
+import { SyncReport } from "@/components/SyncReport";
 import { useAuth } from "@/lib/auth";
 import { isEngineer, isManager } from "@/lib/rbac";
 import { api } from "@/lib/api";
+import { useSyncStore } from "@/lib/stores/StoreProvider";
 import { downloadSampleTemplates } from "@/lib/sampleTemplates";
 import type {
   DocumentListItem,
@@ -56,9 +58,10 @@ export default function DocumentsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [ingestOpen, setIngestOpen] = useState(false);
-  // Recent ingestion runs from the current session — the backend doesn't yet
-  // expose GET /analytics/ingestion-runs, so this is in-memory only.
+  // Runs from the current session, kept in memory so the report stays on screen right where the
+  // user uploaded. The durable history lives at /sync — every run here is also there.
   const [runs, setRuns] = useState<RunRecord[]>([]);
+  const sync = useSyncStore();
   const [deleteDoc, setDeleteDoc] = useState<DocumentListItem | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -126,8 +129,14 @@ export default function DocumentsPage() {
   const onDeleteClick = (d: DocumentListItem) => {
     setDeleteDoc(d);
   };
-  const recordRun = (run: RunRecord) =>
+  const recordRun = (run: RunRecord) => {
     setRuns((prev) => [run, ...prev].slice(0, 8));
+
+    // Broadcast that the data changed. SyncStore bumps its `version`, which every page watches —
+    // the map, the dashboard, the site pages and the alert list all re-fetch themselves. This is
+    // what makes an upload land across the app without the operator reloading anything.
+    sync.recordUpload(run.summary);
+  };
 
   return (
     <>
@@ -690,6 +699,52 @@ function RunSummaryCard({ run }: { run: RunRecord }) {
     : dedup
       ? "Duplicate file — returned prior run"
       : "Pipeline completed";
+
+  // A Site Snapshot upload synchronises whole aggregates, so it gets the full synchronisation
+  // report — the same component the /sync history renders, so the two can never tell different
+  // stories about the same upload. A flat network log syncs nothing and keeps the original card.
+  const isSnapshot = summary.syncedSites.length > 0;
+
+  if (isSnapshot) {
+    return (
+      <Card pad={14}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 12,
+            gap: 10,
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>Site Snapshot synchronised</div>
+            <div
+              className="mono"
+              style={{ fontSize: 10, color: "var(--ink-4)", marginTop: 3 }}
+            >
+              {run.fileName}
+            </div>
+          </div>
+          <Link
+            href="/sync"
+            className="mono uppr"
+            style={{
+              fontSize: 9,
+              letterSpacing: ".12em",
+              color: "var(--accent)",
+              textDecoration: "none",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Full history →
+          </Link>
+        </div>
+
+        <SyncReport run={summary} />
+      </Card>
+    );
+  }
 
   return (
     <Card pad={14}>

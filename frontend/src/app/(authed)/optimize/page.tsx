@@ -39,7 +39,7 @@ const OptimizePage = observer(function OptimizePage() {
           <Section label="SCENARIO INPUTS">
             <Card pad={16}>
               <Slider label="Sites on solar"           value={store.solar}  unit="%"   min={20}  max={100}  onChange={store.setSolar} />
-              <Slider label="Diesel price"             value={store.diesel} unit="₦/L" min={700} max={1400} onChange={store.setDiesel} />
+              <Slider label="Diesel price"             value={store.diesel} unit="₦/L" min={700} max={3000} onChange={store.setDiesel} />
               <Slider label="Battery switch threshold" value={store.batt}   unit="%"   min={30}  max={90}   onChange={store.setBatt} />
             </Card>
           </Section>

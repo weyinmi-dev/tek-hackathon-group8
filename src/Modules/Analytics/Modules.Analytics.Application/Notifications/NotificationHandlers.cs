@@ -42,7 +42,9 @@ internal sealed class PipelineCompletedNotificationFeedHandler(
                 body: $"{e.FileName}: {e.RecordsCreated} created, {e.RecordsUpdated} updated, " +
                       $"{e.RecordsArchived} archived.",
                 siteCode: primarySite,
-                link: $"/sync/{e.IngestionRunId}",
+                // Query param, not a path segment: the sync history renders its detail inline on the
+                // list rather than on a nested route, so /sync/{id} would 404.
+                link: $"/sync?run={e.IngestionRunId}",
 
                 // One per run. The run id is already unique, so this only guards a redelivery of the
                 // same event — which the in-memory bus can produce on retry.
@@ -73,7 +75,9 @@ internal sealed class PipelineCompletedNotificationFeedHandler(
                 title: $"Synchronisation of {sites} completed with {e.WarningCount} warning(s)",
                 body: "Some of the reported data could not be applied. Open the sync report for details.",
                 siteCode: primarySite,
-                link: $"/sync/{e.IngestionRunId}",
+                // Query param, not a path segment: the sync history renders its detail inline on the
+                // list rather than on a nested route, so /sync/{id} would 404.
+                link: $"/sync?run={e.IngestionRunId}",
                 dedupeKey: $"warnings:{e.IngestionRunId}"));
         }
 
@@ -121,13 +125,13 @@ internal sealed class PipelineFailedNotificationFeedHandler(
 {
     public async Task Handle(PipelineFailedNotification e, CancellationToken cancellationToken)
     {
-        Notification notification = Notification.Raise(
+        var notification = Notification.Raise(
             NotificationKind.SynchronizationFailed,
             NotificationSeverity.Critical,
             title: $"Synchronisation failed — {e.FileName}",
             body: e.Reason,
             siteCode: null,
-            link: $"/sync/{e.IngestionRunId}",
+            link: $"/sync?run={e.IngestionRunId}",
             dedupeKey: $"failed:{e.IngestionRunId}");
 
         await PipelineCompletedNotificationFeedHandler.PersistAsync(
