@@ -160,11 +160,18 @@ function BigStat({ label, value, delta, good, last }: {
 function CostChart({ base, opt }: { base: number[]; opt: number[] }) {
   const W = 600, H = 180;
   const max = Math.max(25, ...base, ...opt);
+
+  // Ticks every ₦5M up to whatever the curves actually reach. The baseline now tracks the diesel
+  // price, so at ₦3000/L it climbs past ₦25M — a fixed 5–20 ladder would leave the top of the
+  // chart unlabelled.
+  const ticks: number[] = [];
+  for (let v = 5; v <= max; v += 5) ticks.push(v);
+
   const pts = (arr: number[]) =>
     arr.map((v, i) => `${40 + (i / Math.max(1, arr.length - 1)) * (W - 40)},${H - (v / max) * H + 20}`).join(" ");
   return (
     <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 180, display: "block" }}>
-      {[5, 10, 15, 20].map((v) => (
+      {ticks.map((v) => (
         <g key={v}>
           <line x1="40" y1={H - (v / max) * H + 20} x2={W} y2={H - (v / max) * H + 20}
             stroke="var(--line)" strokeWidth=".5" strokeDasharray="2 3" />
@@ -173,13 +180,18 @@ function CostChart({ base, opt }: { base: number[]; opt: number[] }) {
       ))}
       <polyline points={pts(base)} fill="none" stroke="var(--ink-3)" strokeWidth="1.5" strokeDasharray="4 3" />
       <polyline points={pts(opt)} fill="none" stroke="var(--accent)" strokeWidth="2" />
-      <polygon points={`${pts(base)} ${pts(opt).split(" ").reverse().join(" ")}`} fill="rgba(0,229,160,.08)" />
+      {/* The saving is the gap between the curves. color-mix keeps it legible on both themes —
+          a fixed rgba tint disappears against the light background. */}
+      <polygon points={`${pts(base)} ${pts(opt).split(" ").reverse().join(" ")}`}
+        fill="color-mix(in oklch, var(--ok) 12%, transparent)" />
       {[0, 7, 14, 21, 29].map((d) => (
         <text key={d} x={40 + (d / 29) * (W - 40)} y={H - 2} textAnchor="middle"
           fill="var(--ink-3)" fontSize="9" fontFamily="var(--mono)">d+{d}</text>
       ))}
       <g transform={`translate(${W - 180}, 30)`}>
-        <rect width="170" height="44" fill="rgba(10,14,22,.7)" stroke="var(--line)" rx="4" />
+        {/* Was a hardcoded near-black panel. In light mode its text (--ink-2, a dark grey) rendered
+            dark-on-dark and the legend was invisible — the panel has to follow the theme. */}
+        <rect width="170" height="44" fill="var(--bg-1)" fillOpacity=".92" stroke="var(--line)" rx="4" />
         <line x1="10" y1="16" x2="28" y2="16" stroke="var(--ink-3)" strokeWidth="1.5" strokeDasharray="4 3" />
         <text x="34" y="19" fill="var(--ink-2)" fontSize="10" fontFamily="var(--mono)">Baseline</text>
         <line x1="10" y1="32" x2="28" y2="32" stroke="var(--accent)" strokeWidth="2" />
