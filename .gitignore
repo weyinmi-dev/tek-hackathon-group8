@@ -398,3 +398,7 @@ FodyWeavers.xsd
 *.sln.iml
 
 .containers/
+
+# Local env — holds real secrets (API keys, JWT signing key). Never commit.
+.env
+!.env.example

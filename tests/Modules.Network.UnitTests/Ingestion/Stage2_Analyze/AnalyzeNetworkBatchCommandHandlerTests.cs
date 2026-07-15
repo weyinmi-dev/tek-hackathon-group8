@@ -101,7 +101,7 @@ public sealed class AnalyzeNetworkBatchCommandHandlerTests
             analyzer ?? new FakeAnalyzer((_, _) => Result.Success(new AiAnalysisResult([], [], null))),
             NullLogger<AnalyzeNetworkBatchCommandHandler>.Instance);
 
-    private sealed class FakeRepo(IngestionRun? run, IReadOnlyList<NetworkEvent> events) : IIngestionRunRepository
+    private sealed class FakeRepo(IngestionRun? run, IReadOnlyList<NetworkEvent> events) : FakeSnapshotStore, IIngestionRunRepository
     {
         public Task<IngestionRun?> GetByIdAsync(Guid id, CancellationToken _ = default) =>
             Task.FromResult(run is not null && run.Id == id ? run : null);

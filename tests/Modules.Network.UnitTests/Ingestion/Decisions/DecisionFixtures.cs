@@ -46,14 +46,16 @@ internal static class DecisionFixtures
         string fingerprint,
         Guid? id = null,
         PipelineAlertSeverity severity = PipelineAlertSeverity.Warn,
-        bool resolved = false) =>
+        bool resolved = false,
+        string towerCode = "LOS-T-014") =>
         new(
             Id: id ?? Guid.NewGuid(),
             AnomalyFingerprint: fingerprint,
             Severity: severity,
             LastSeenAt: Ts,
             OccurrenceCount: 1,
-            IsResolved: resolved);
+            IsResolved: resolved,
+            TowerCode: towerCode);
 
     public static TowerSnapshot Tower(
         string code = "LOS-T-014",

@@ -346,3 +346,313 @@ export function downloadSampleTemplates(): void {
   downloadBlob("network-events-sample.csv", buildSampleCsv(), "text/csv;charset=utf-8");
   downloadBlob("network-events-sample.txt", buildSampleTxt(), "text/tab-separated-values;charset=utf-8");
 }
+
+// ── Site Snapshot template ────────────────────────────────────────────────────
+//
+// A full OSS site-snapshot document — the richer shape that synchronises towers,
+// energy sites, equipment, maintenance, alarms and telemetry in one upload, versus
+// the flat CSV/TXT above which only carries per-reading network events.
+//
+// Built as a JS object and serialised with JSON.stringify, so the output is valid
+// JSON by construction — there is no hand-formatting to get wrong. It is a top-level
+// ARRAY of two worked examples so the file demonstrates the batch shape and every
+// optional block appears at least once: site 1 is healthy, site 2 is on generator
+// with an open alarm and an open ticket. The reader edits the values in place.
+//
+// The only hard-required field is site.siteCode. Everything else is optional — the
+// backend ignores unknown fields and treats a missing block as "not reported", so a
+// site you have less data for can simply drop the blocks it lacks.
+//
+// Two derivations worth knowing when filling this in (both configurable server-side):
+//   - RSRP (dBm) in performanceMetrics.kpis drives the site's signal %:
+//     -120 dBm -> 0%, -70 dBm -> 100%. Omit it and the site reads 0% signal.
+//   - environmentalMetrics.batteryVoltage maps 42-54 V -> 0-100% state of charge.
+
+type SnapshotTemplate = {
+  requestId: string;
+  provider: string;
+  environment: string;
+  generatedAt: string;
+  site: {
+    siteId: string;
+    siteCode: string;
+    siteName: string;
+    region: string;
+    cluster?: string;
+    latitude: number;
+    longitude: number;
+    technology: string[];
+    vendor: string;
+    status: string;
+    healthScore: number;
+    commissionedDate?: string;
+    lastHeartbeat: string;
+    equipment: Array<{ equipmentId: string; type: string; model?: string; status: string }>;
+  };
+  environmentalMetrics: {
+    temperature: number;
+    humidity: number;
+    batteryVoltage: number;
+    generatorFuelPercent: number;
+    generatorRunning: boolean;
+    mainPowerAvailable: boolean;
+    airConditionerStatus?: string;
+    doorOpen?: boolean;
+    smokeDetected?: boolean;
+  };
+  performanceMetrics: {
+    measurementInterval: string;
+    capturedAt: string;
+    availabilityPercent: number;
+    connectedUsers: number;
+    downlinkTrafficGb: number;
+    uplinkTrafficGb: number;
+    packetLossPercent: number;
+    latencyMs: number;
+    cellUtilizationPercent: number;
+    kpis: Array<{ name: string; value: number; unit: string }>;
+  };
+  activeAlarms: Array<{
+    alarmId: string;
+    severity: string;
+    category: string;
+    type: string;
+    status: string;
+    source?: string;
+    raisedAt: string;
+    description: string;
+  }>;
+  maintenance: {
+    lastMaintenanceDate?: string;
+    nextScheduledMaintenance?: string;
+    openTickets: Array<{
+      ticketId: string;
+      priority: string;
+      status: string;
+      assignedEngineer?: { engineerId: string; name: string };
+      issue: string;
+      createdAt: string;
+      estimatedArrival?: string;
+    }>;
+    maintenanceHistory: Array<{
+      ticketId: string;
+      completedAt: string;
+      engineer: string;
+      action: string;
+    }>;
+  };
+};
+
+function buildSnapshotObjects(): SnapshotTemplate[] {
+  // Anchor to now so the sample reads as a fresh capture; the measurement is stamped
+  // a minute before generation, mirroring a real 15-minute feed.
+  const now = new Date();
+  const generatedAt = now.toISOString();
+  const capturedAt = new Date(now.getTime() - 60_000).toISOString();
+  const heartbeat = new Date(now.getTime() - 30_000).toISOString();
+
+  const healthy: SnapshotTemplate = {
+    requestId: "REPLACE-WITH-A-UNIQUE-ID-PER-DOCUMENT",
+    provider: "MTN Nigeria",
+    environment: "Production",
+    generatedAt,
+    site: {
+      siteId: "MTN-LAG-0001",
+      siteCode: "LAG0001",
+      siteName: "Example Healthy Site",
+      region: "Lagos",
+      cluster: "Lagos Mainland",
+      latitude: 6.5095,
+      longitude: 3.3711,
+      technology: ["2G", "3G", "4G", "5G"],
+      vendor: "Huawei",
+      status: "Operational",
+      healthScore: 96,
+      commissionedDate: "2021-08-16",
+      lastHeartbeat: heartbeat,
+      equipment: [
+        { equipmentId: "BBU-001", type: "Baseband Unit", model: "BBU5900", status: "Healthy" },
+        { equipmentId: "RRU-001", type: "Remote Radio Unit", model: "RRU5302", status: "Healthy" },
+        { equipmentId: "BAT-001", type: "Battery Bank", status: "Charging" },
+      ],
+    },
+    environmentalMetrics: {
+      temperature: 32.4,
+      humidity: 78,
+      batteryVoltage: 52.0,       // ~83% on a 42-54 V string
+      generatorFuelPercent: 88,
+      generatorRunning: false,
+      mainPowerAvailable: true,   // on grid, generator idle -> healthy
+      airConditionerStatus: "Running",
+      doorOpen: false,
+      smokeDetected: false,
+    },
+    performanceMetrics: {
+      measurementInterval: "15 Minutes",
+      capturedAt,
+      availabilityPercent: 99.98,
+      connectedUsers: 1240,
+      downlinkTrafficGb: 412.5,
+      uplinkTrafficGb: 89.2,
+      packetLossPercent: 0.08,
+      latencyMs: 11,
+      cellUtilizationPercent: 82,
+      kpis: [
+        { name: "RSRP", value: -84, unit: "dBm" },   // drives signal %: -120=0%, -70=100%
+        { name: "SINR", value: 28.2, unit: "dB" },
+        { name: "PRB Utilization", value: 78.4, unit: "%" },
+      ],
+    },
+    activeAlarms: [],             // no open alarms -> no alerts raised
+    maintenance: {
+      lastMaintenanceDate: "2026-07-02",
+      nextScheduledMaintenance: "2026-09-02",
+      openTickets: [],
+      maintenanceHistory: [
+        { ticketId: "TT-0001", completedAt: "2026-07-02T11:40:00Z", engineer: "Temitope Alao", action: "Routine PM completed" },
+      ],
+    },
+  };
+
+  const degraded: SnapshotTemplate = {
+    requestId: "REPLACE-WITH-A-DIFFERENT-UNIQUE-ID",
+    provider: "MTN Nigeria",
+    environment: "Production",
+    generatedAt,
+    site: {
+      siteId: "MTN-LAG-0002",
+      siteCode: "LAG0002",
+      siteName: "Example Site On Generator",
+      region: "Lagos",
+      cluster: "Lagos North",
+      latitude: 6.6432,
+      longitude: 3.3644,
+      technology: ["2G", "3G", "4G"],
+      vendor: "ZTE",
+      status: "Operational",
+      healthScore: 71,
+      commissionedDate: "2019-11-12",
+      lastHeartbeat: heartbeat,
+      equipment: [
+        { equipmentId: "BBU-002", type: "Baseband Unit", model: "ZXSDR B8200", status: "Healthy" },
+        { equipmentId: "GEN-002", type: "Generator", model: "Mikano 100KVA", status: "Running" },
+        { equipmentId: "BAT-002", type: "Battery Bank", status: "Discharging" },
+      ],
+    },
+    environmentalMetrics: {
+      temperature: 35.1,
+      humidity: 70,
+      batteryVoltage: 47.9,       // ~49%
+      generatorFuelPercent: 56,
+      generatorRunning: true,
+      mainPowerAvailable: false,  // grid down, on generator
+      airConditionerStatus: "Running",
+      doorOpen: false,
+      smokeDetected: false,
+    },
+    performanceMetrics: {
+      measurementInterval: "15 Minutes",
+      capturedAt,
+      availabilityPercent: 99.88,
+      connectedUsers: 940,
+      downlinkTrafficGb: 210.4,
+      uplinkTrafficGb: 41.6,
+      packetLossPercent: 0.45,
+      latencyMs: 32,
+      cellUtilizationPercent: 71,
+      kpis: [
+        { name: "RSRP", value: -94, unit: "dBm" },
+        { name: "SINR", value: 18.4, unit: "dB" },
+        { name: "PRB Utilization", value: 68.1, unit: "%" },
+      ],
+    },
+    activeAlarms: [
+      {
+        alarmId: "ALM-0001",
+        severity: "Major",         // Critical | Major | Minor | Warning
+        category: "Power",
+        type: "Grid Power Failure",
+        status: "Active",          // Active | Acknowledged | Cleared | Resolved
+        source: "Generator Controller",
+        raisedAt: capturedAt,
+        description: "Commercial grid lost. Generator supplying load.",
+      },
+    ],
+    maintenance: {
+      lastMaintenanceDate: "2026-05-18",
+      nextScheduledMaintenance: "2026-07-28",
+      openTickets: [
+        {
+          ticketId: "TT-0002",
+          priority: "High",
+          status: "Dispatched",
+          assignedEngineer: { engineerId: "ENG-001", name: "Chinedu Okafor" },
+          issue: "Grid power investigation",
+          createdAt: capturedAt,
+          estimatedArrival: new Date(now.getTime() + 3 * 3_600_000).toISOString(),
+        },
+      ],
+      maintenanceHistory: [],
+    },
+  };
+
+  return [healthy, degraded];
+}
+
+export function buildSiteSnapshotTemplate(): string {
+  return JSON.stringify(buildSnapshotObjects(), null, 2) + "\n";
+}
+
+/**
+ * A plain-text field guide that ships alongside the JSON, so the operator has the
+ * rules without needing to open the source. Kept out of the JSON itself because the
+ * document is a top-level array (nowhere to hang a comment) and a stray key would
+ * only add noise to a file meant to be edited.
+ */
+export function buildSiteSnapshotReadme(): string {
+  return [
+    "SITE SNAPSHOT — UPLOAD TEMPLATE",
+    "================================",
+    "",
+    "Upload via: Knowledge & Logs -> Ingest network log -> pick this .json.",
+    "",
+    "SHAPES ACCEPTED",
+    "  - One site:      { \"site\": { ... }, ... }",
+    "  - Many sites:    [ { ...site1... }, { ...site2... } ]     (this template)",
+    "  - Many sites:    { \"snapshots\": [ { ... }, { ... } ] }",
+    "",
+    "REQUIRED",
+    "  - site.siteCode is the ONLY hard-required field. It is the key that joins a",
+    "    tower, an energy site and their telemetry, so it must be present and stable",
+    "    across uploads for the same physical site.",
+    "  - Everything else is optional. A missing block means 'not reported' — drop any",
+    "    block you have no data for. Unknown fields are ignored.",
+    "",
+    "HOW VALUES ARE READ",
+    "  - performanceMetrics.kpis[name=RSRP] (dBm) -> signal %:  -120 = 0%, -70 = 100%.",
+    "    Omit RSRP and the site shows 0% signal.",
+    "  - environmentalMetrics.batteryVoltage (V) -> battery %:  42 V = 0%, 54 V = 100%.",
+    "  - An open Critical alarm forces the tower to CRITICAL regardless of healthScore.",
+    "    Otherwise healthScore decides: <50 critical, <80 warn, else ok.",
+    "  - performanceMetrics.capturedAt is the measurement time — telemetry is stamped",
+    "    with it, not with the upload time. A back-dated snapshot lands on the timeline",
+    "    where it belongs.",
+    "",
+    "ENUMS (free text, but these are recognised)",
+    "  - alarm.severity: Critical | Major | Minor | Warning",
+    "  - alarm.status:   Active | Acknowledged | Cleared | Resolved",
+    "                    (Cleared/Resolved/Closed drop the alarm; anything else keeps it open)",
+    "",
+    "IDEMPOTENCY",
+    "  - Re-uploading the exact same file changes nothing (matched on a content hash).",
+    "  - Uploading an updated snapshot for the same siteCode UPDATES in place —",
+    "    equipment that vanishes is retired, alarms that clear resolve their alerts,",
+    "    tickets that move to history are completed. Nothing is duplicated.",
+    "",
+  ].join("\n");
+}
+
+export function downloadSiteSnapshotTemplate(): void {
+  downloadBlob("site-snapshot-template.json", buildSiteSnapshotTemplate(), "application/json;charset=utf-8");
+  downloadBlob("site-snapshot-README.txt", buildSiteSnapshotReadme(), "text/plain;charset=utf-8");
+}

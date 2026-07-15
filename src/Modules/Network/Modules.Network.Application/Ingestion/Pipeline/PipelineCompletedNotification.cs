@@ -24,4 +24,32 @@ public sealed record PipelineCompletedNotification(
     int AlertsUpdated,
     int OptimizationsCreated,
     bool TopologyChanged,
-    DateTimeOffset CompletedAt) : IntegrationEvent(Id);
+    DateTimeOffset CompletedAt,
+
+    // ── Synchronisation outcome ───────────────────────────────────────────────
+    // Carried on the event so subscribers can act on what the upload actually did without going
+    // back to the database for it. The notification feed reads these to decide what is worth
+    // telling an operator about.
+    int RecordsCreated = 0,
+    int RecordsUpdated = 0,
+    int RecordsArchived = 0,
+    int CriticalAlertsRaised = 0,
+    int WarningCount = 0,
+    string? SubmittedBy = null,
+    IReadOnlyList<string>? SiteCodes = null) : IntegrationEvent(Id)
+{
+    public IReadOnlyList<string> SiteCodes { get; init; } = SiteCodes ?? [];
+}
+
+/// <summary>
+/// Raised when a run fails. The completed event deliberately never fires for a failed run, so
+/// without this a synchronisation failure would be invisible to anything downstream — including the
+/// operator, who is exactly the person who needs to know that the feed stopped landing.
+/// </summary>
+public sealed record PipelineFailedNotification(
+    Guid Id,
+    Guid IngestionRunId,
+    string FileName,
+    string Reason,
+    string SubmittedBy,
+    DateTimeOffset FailedAt) : IntegrationEvent(Id);

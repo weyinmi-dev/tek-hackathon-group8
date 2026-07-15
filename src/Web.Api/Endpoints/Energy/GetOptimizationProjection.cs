@@ -17,7 +17,12 @@ public sealed class GetOptimizationProjection : IEndpoint
             int? solar, int? diesel, int? batt, ISender sender, CancellationToken ct) =>
         {
             int s = Math.Clamp(solar ?? 44, 0, 100);
-            int d = Math.Clamp(diesel ?? 900, 700, 2000);
+
+            // Diesel ceiling matches the slider's maximum (₦3000/L). The two must move together:
+            // a clamp below the slider's range would let an operator drag past it and watch the
+            // projection stop responding, with nothing to say why.
+            int d = Math.Clamp(diesel ?? 900, 700, 3000);
+
             int b = Math.Clamp(batt ?? 70, 30, 95);
 
             Result<OptimizationProjectionResponse> result = await sender.Send(

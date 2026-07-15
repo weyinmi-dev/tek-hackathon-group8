@@ -1,3 +1,4 @@
+using Modules.Network.Domain.Ingestion;
 using SharedKernel;
 
 namespace Modules.Network.Application.Ingestion.Stage4_Persist;
@@ -14,9 +15,36 @@ public interface IAlertActionExecutor
     Task<Result<AlertActionsResult>> ExecuteAsync(
         IReadOnlyList<AlertActionRequest> requests,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Closes alerts whose upstream alarm has cleared — it was live here but is absent from the
+    /// provider's latest snapshot of that site.
+    ///
+    /// Only ever called with fingerprints the planner has already established are OSS-sourced and
+    /// belong to a site covered by this upload. Returns the number actually resolved; alerts already
+    /// resolved are skipped, so a repeated snapshot that keeps omitting an alarm is a no-op.
+    /// </summary>
+    Task<Result<AlertResolutionsResult>> ResolveAsync(
+        IReadOnlyList<AlertResolutionRequest> resolutions,
+        CancellationToken cancellationToken = default);
 }
 
-public sealed record AlertActionsResult(int AlertsCreated, int AlertsUpdated);
+public sealed record AlertResolutionRequest(string AnomalyFingerprint, string Reason);
+
+public sealed record AlertResolutionsResult(
+    int AlertsResolved,
+    IReadOnlyList<SyncChange>? Changes = null)
+{
+    public IReadOnlyList<SyncChange> Changes { get; init; } = Changes ?? [];
+}
+
+public sealed record AlertActionsResult(
+    int AlertsCreated,
+    int AlertsUpdated,
+    IReadOnlyList<SyncChange>? Changes = null)
+{
+    public IReadOnlyList<SyncChange> Changes { get; init; } = Changes ?? [];
+}
 
 /// <summary>
 /// Primitive request envelope. Network resolves region/title/severity from the

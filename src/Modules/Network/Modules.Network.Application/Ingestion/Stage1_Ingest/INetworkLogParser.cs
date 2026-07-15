@@ -26,8 +26,12 @@ public interface INetworkLogParser
     /// Strict parse: any malformed row fails the whole stage with a row-scoped error.
     /// Lenient mode is intentionally not supported in PR 2; bad data should surface
     /// loudly rather than slip silently into the AI stage.
+    ///
+    /// Row-oriented parsers return <see cref="NetworkLogParseResult.FromEvents"/>. Parsers for
+    /// document-shaped feeds additionally return the canonical snapshot they decoded, which
+    /// Stage 1 persists and Stage 3 plans the synchronisation from.
     /// </summary>
-    Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    Task<Result<NetworkLogParseResult>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
         CancellationToken cancellationToken = default);

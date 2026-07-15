@@ -26,7 +26,8 @@ public sealed class OperationsCopilotAgentBuilder(
     EnergyTools energy,
     KnowledgeTools knowledge,
     DocumentTools documents,
-    GeoTools geo)
+    GeoTools geo,
+    SiteSyncTools sync)
 {
     public AIAgent Build()
     {
@@ -50,6 +51,15 @@ public sealed class OperationsCopilotAgentBuilder(
                     AIFunctionFactory.Create(documents.SearchDocuments),
                     AIFunctionFactory.Create(geo.GetSiteGeoContext),
                     AIFunctionFactory.Create(geo.ClassifyRegion),
+
+                    // Synchronised OSS snapshot state: a site's current condition, its telemetry
+                    // history, and what any given upload actually changed. These answer "why is this
+                    // site unhealthy", "what changed since yesterday", and "summarise this upload"
+                    // from live state rather than from an embedded copy of it.
+                    AIFunctionFactory.Create(sync.GetSiteDetail),
+                    AIFunctionFactory.Create(sync.GetSiteTelemetry),
+                    AIFunctionFactory.Create(sync.GetSyncReport),
+                    AIFunctionFactory.Create(sync.ListRecentUploads),
                 ],
             },
             ChatHistoryProvider = chatHistory,

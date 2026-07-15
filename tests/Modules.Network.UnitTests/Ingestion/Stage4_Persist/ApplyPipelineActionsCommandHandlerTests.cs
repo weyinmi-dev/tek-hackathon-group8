@@ -5,7 +5,9 @@ using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
 using Modules.Network.Domain;
+using Modules.Network.Domain.Assets;
 using Modules.Network.Domain.Ingestion;
+using Modules.Network.Domain.Maintenance;
 using Modules.Network.Domain.Towers;
 using SharedKernel;
 using Xunit;
@@ -52,7 +54,16 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
             new ApplyPipelineActionsCommand(run.Id, []), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().Be(new PipelineActionCounts(0, 0, 0, 0));
+
+        // Asserted on the totals rather than by record equality: PipelineActionCounts now carries a
+        // Warnings list, and a collection member gives a record reference equality, not value
+        // equality — two all-zero counts with distinct empty lists would compare unequal.
+        result.Value.TotalCreated.Should().Be(0);
+        result.Value.TotalUpdated.Should().Be(0);
+        result.Value.TotalArchived.Should().Be(0);
+        result.Value.OptimizationsCreated.Should().Be(0);
+        result.Value.TelemetryRowsAppended.Should().Be(0);
+        result.Value.Warnings.Should().BeEmpty();
     }
 
     [Fact]
@@ -97,7 +108,7 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         IngestionRun run = NewRun();
         WalkToPersisting(run);
 
-        Guid existingId = Guid.NewGuid();
+        var existingId = Guid.NewGuid();
         DetectedAnomaly anomaly = Anomaly();
         var action = new UpdateAlertAction(FingerprintFor(anomaly), existingId, anomaly);
 
@@ -150,7 +161,7 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         IngestionRun run = NewRun();
         WalkToPersisting(run);
 
-        DomainTower tower = DomainTower.Create(
+        var tower = DomainTower.Create(
             "LOS-T-014", "T-014", "Lagos West",
             6.5, 3.5, 0, 0,
             signalPct: 80, loadPct: 50, status: TowerStatus.Ok, issue: null);
@@ -209,7 +220,7 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         WalkToPersisting(run);
 
         DetectedAnomaly anomaly = Anomaly(tower: "LOS-T-014");
-        DomainTower tower = DomainTower.Create(
+        var tower = DomainTower.Create(
             "LOS-T-014", "T-014", "Lagos West",
             6.5, 3.5, 0, 0, 80, 50, TowerStatus.Ok, null);
 
@@ -258,17 +269,92 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
         IReadOnlyDictionary<string, TowerSnapshot>? towers = null,
         IAlertActionExecutor? alertExecutor = null,
         ITowerRepository? towerRepo = null,
-        ISender? sender = null) =>
-        new(
+        ISender? sender = null,
+        IEnergySyncExecutor? energyExecutor = null,
+        SnapshotSyncApplier? snapshotApplier = null)
+    {
+        ITowerRepository resolvedTowers = towerRepo ?? new FakeTowerRepository();
+
+        return new ApplyPipelineActionsCommandHandler(
             new FakeRunRepo(run),
             new FakeTowerSnapshotProvider(towers ?? Towers()),
-            towerRepo ?? new FakeTowerRepository(),
+            resolvedTowers,
             alertExecutor ?? new FakeAlertExecutor(_ => Result.Success(new AlertActionsResult(0, 0))),
+            energyExecutor ?? new FakeEnergyExecutor(),
+            snapshotApplier ?? new SnapshotSyncApplier(
+                resolvedTowers,
+                new FakeEquipmentRepository(),
+                new FakeTicketRepository(),
+                new FakeEngineerRepository(),
+                NullLogger<SnapshotSyncApplier>.Instance),
             sender ?? new FakeOptimizationSender(),
             new FakeUnitOfWork(),
             NullLogger<ApplyPipelineActionsCommandHandler>.Instance);
+    }
 
-    private sealed class FakeRunRepo(IngestionRun? run) : IIngestionRunRepository
+    private sealed class FakeEnergyExecutor : IEnergySyncExecutor
+    {
+        public List<EnergySyncRequest> Requests { get; } = [];
+
+        public Task<Result<EnergySyncResult>> ExecuteAsync(
+            IReadOnlyList<EnergySyncRequest> requests, CancellationToken _ = default)
+        {
+            Requests.AddRange(requests);
+            return Task.FromResult(Result.Success(new EnergySyncResult(0, requests.Count, requests.Count)));
+        }
+    }
+
+    private sealed class FakeEquipmentRepository : ISiteEquipmentRepository
+    {
+        public List<SiteEquipment> Items { get; } = [];
+
+        public Task<IReadOnlyList<SiteEquipment>> ListForSiteAsync(string siteCode, CancellationToken _ = default) =>
+            Task.FromResult<IReadOnlyList<SiteEquipment>>(
+                Items.Where(e => e.SiteCode == siteCode.ToUpperInvariant()).ToList());
+        public Task AddAsync(SiteEquipment equipment, CancellationToken _ = default)
+        {
+            Items.Add(equipment);
+            return Task.CompletedTask;
+        }
+        public Task<int> CountAsync(CancellationToken _ = default) => Task.FromResult(Items.Count);
+    }
+
+    private sealed class FakeTicketRepository : IMaintenanceTicketRepository
+    {
+        public List<MaintenanceTicket> Items { get; } = [];
+
+        public Task<IReadOnlyList<MaintenanceTicket>> ListForSiteAsync(string siteCode, CancellationToken _ = default) =>
+            Task.FromResult<IReadOnlyList<MaintenanceTicket>>(
+                Items.Where(t => t.SiteCode == siteCode.ToUpperInvariant()).ToList());
+        public Task<IReadOnlyList<MaintenanceTicket>> ListOpenAsync(int take, CancellationToken _ = default) =>
+            Task.FromResult<IReadOnlyList<MaintenanceTicket>>(
+                Items.Where(t => t.Status == MaintenanceTicketStatus.Open).Take(take).ToList());
+        public Task AddAsync(MaintenanceTicket ticket, CancellationToken _ = default)
+        {
+            Items.Add(ticket);
+            return Task.CompletedTask;
+        }
+        public Task<int> CountAsync(MaintenanceTicketStatus? status, CancellationToken _ = default) =>
+            Task.FromResult(status is null ? Items.Count : Items.Count(t => t.Status == status));
+    }
+
+    private sealed class FakeEngineerRepository : IEngineerRepository
+    {
+        public List<Engineer> Items { get; } = [];
+
+        public Task<Engineer?> GetByEngineerIdAsync(string engineerId, CancellationToken _ = default) =>
+            Task.FromResult(Items.FirstOrDefault(e => e.EngineerId == engineerId));
+        public Task<IReadOnlyList<Engineer>> ListAsync(CancellationToken _ = default) =>
+            Task.FromResult<IReadOnlyList<Engineer>>(Items);
+        public Task AddAsync(Engineer engineer, CancellationToken _ = default)
+        {
+            Items.Add(engineer);
+            return Task.CompletedTask;
+        }
+        public Task<int> CountAsync(CancellationToken _ = default) => Task.FromResult(Items.Count);
+    }
+
+    private sealed class FakeRunRepo(IngestionRun? run) : FakeSnapshotStore, IIngestionRunRepository
     {
         public Task<IngestionRun?> GetByIdAsync(Guid id, CancellationToken _ = default) =>
             Task.FromResult(run is not null && run.Id == id ? run : null);
@@ -288,21 +374,42 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
 
     private sealed class FakeTowerRepository(DomainTower? tower = null) : ITowerRepository
     {
+        public List<DomainTower> Added { get; } = [];
+
         public Task<IReadOnlyList<DomainTower>> ListAsync(CancellationToken _ = default) =>
             Task.FromResult<IReadOnlyList<DomainTower>>(tower is null ? [] : [tower]);
         public Task<DomainTower?> GetByCodeAsync(string code, CancellationToken _ = default) =>
-            Task.FromResult(tower is not null && tower.Code == code ? tower : null);
+            Task.FromResult(
+                tower is not null && tower.Code == code
+                    ? tower
+                    : Added.FirstOrDefault(t => t.Code == code));
+        public Task<DomainTower?> GetForUpdateAsync(string code, CancellationToken ct = default) =>
+            GetByCodeAsync(code, ct);
         public Task<IReadOnlyList<DomainTower>> ListByRegionAsync(string _, CancellationToken __ = default) =>
             Task.FromResult<IReadOnlyList<DomainTower>>([]);
+        public Task AddAsync(DomainTower t, CancellationToken _ = default)
+        {
+            Added.Add(t);
+            return Task.CompletedTask;
+        }
         public Task AddRangeAsync(IEnumerable<DomainTower> _, CancellationToken __ = default) => Task.CompletedTask;
         public Task<int> CountAsync(CancellationToken _ = default) => Task.FromResult(tower is null ? 0 : 1);
     }
 
     private sealed class FakeAlertExecutor(Func<IReadOnlyList<AlertActionRequest>, Result<AlertActionsResult>> respond) : IAlertActionExecutor
     {
+        public List<AlertResolutionRequest> Resolutions { get; } = [];
+
         public Task<Result<AlertActionsResult>> ExecuteAsync(
             IReadOnlyList<AlertActionRequest> requests, CancellationToken _ = default) =>
             Task.FromResult(respond(requests));
+
+        public Task<Result<AlertResolutionsResult>> ResolveAsync(
+            IReadOnlyList<AlertResolutionRequest> resolutions, CancellationToken _ = default)
+        {
+            Resolutions.AddRange(resolutions);
+            return Task.FromResult(Result.Success(new AlertResolutionsResult(resolutions.Count)));
+        }
     }
 
     private sealed class FakeUnitOfWork : IUnitOfWork

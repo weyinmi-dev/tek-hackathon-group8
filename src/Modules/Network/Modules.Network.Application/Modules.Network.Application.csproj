@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- Binds the tunable pipeline thresholds (decision engine, snapshot anomaly rules, snapshot
+         calibration) from configuration at startup. -->
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\..\Application\Application.csproj" />
     <ProjectReference Include="..\Modules.Network.Domain\Modules.Network.Domain.csproj" />
   </ItemGroup>

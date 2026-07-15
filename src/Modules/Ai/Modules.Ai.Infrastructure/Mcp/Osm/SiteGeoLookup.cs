@@ -18,7 +18,25 @@ namespace Modules.Ai.Infrastructure.Mcp.Osm;
 /// </summary>
 public interface ISiteGeoLookup
 {
+    /// <summary>
+    /// Full lookup: reads the cache, and on a miss calls OSM (three sequential queries) and caches
+    /// the result. May take tens of seconds when OSM is slow or unreachable, so it belongs only on
+    /// paths where the user has explicitly asked for one site's geo and is prepared to wait.
+    /// </summary>
     Task<SiteGeoContext?> GetAsync(string siteCode, CancellationToken ct = default);
+
+    /// <summary>
+    /// Cache-only lookup. Returns null on a miss and never touches the network.
+    ///
+    /// This exists because geo is decoration on list endpoints (alerts, energy sites, anomalies) and
+    /// decoration must not be able to stall the page. <see cref="GetAsync"/> on a cold site issues
+    /// live OSM calls; with N sites on a list and OSM unreachable, the endpoint sat on its timeout
+    /// budget and took 30 seconds to return data the database had produced in milliseconds.
+    /// List endpoints use this instead: geo appears once the cache is warm, and is simply absent
+    /// until then.
+    /// </summary>
+    Task<SiteGeoContext?> GetCachedAsync(string siteCode, CancellationToken ct = default);
+
     Task<(double Lat, double Lon)?> GetCoordinatesAsync(string siteCode, CancellationToken ct = default);
 }
 
@@ -57,6 +75,13 @@ internal sealed class SiteGeoLookup : ISiteGeoLookup
 
         await _cache.SetAsync(key, new CoordCacheRecord(tower.Latitude, tower.Longitude), _ttl, ct);
         return (tower.Latitude, tower.Longitude);
+    }
+
+    public async Task<SiteGeoContext?> GetCachedAsync(string siteCode, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(siteCode)) return null;
+
+        return await _cache.GetAsync<SiteGeoContext>(CtxKeyPrefix + siteCode.ToUpperInvariant(), ct);
     }
 
     public async Task<SiteGeoContext?> GetAsync(string siteCode, CancellationToken ct = default)

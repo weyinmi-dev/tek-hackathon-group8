@@ -1,3 +1,4 @@
+using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using FluentAssertions;
 using Modules.Network.Domain.Ingestion;
 using Modules.Network.Infrastructure.Ingestion.Parsers;
@@ -26,13 +27,13 @@ public sealed class TxtNetworkLogParserTests
             "2026-05-05T08:00:00Z\tLOS-T-014\t98\t42\t18\tOK\n" +
             "2026-05-05T08:05:00Z\tLOS-T-014\t34\t93\t118\tCritical\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(txt), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().HaveCount(2);
-        result.Value[1].RawStatus.Should().Be("Critical");
-        result.Value[1].SignalPct.Should().Be(34);
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events.Should().HaveCount(2);
+        parsed.Value.Events[1].RawStatus.Should().Be("Critical");
+        parsed.Value.Events[1].SignalPct.Should().Be(34);
     }
 
     [Fact]
@@ -44,10 +45,10 @@ public sealed class TxtNetworkLogParserTests
             "timestamp,tower_code\n" +
             "2026-05-05T08:00:00Z,LOS-T-014\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(txt), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MissingColumn");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MissingColumn");
     }
 }

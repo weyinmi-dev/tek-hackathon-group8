@@ -1,8 +1,10 @@
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Modules.Alerts.Application.Pipeline;
+using Modules.Alerts.Domain;
 using Modules.Alerts.Domain.Alerts;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
+using Modules.Network.Domain.Ingestion;
 using SharedKernel;
 
 namespace Modules.Alerts.Infrastructure.Pipeline;
@@ -17,14 +19,67 @@ namespace Modules.Alerts.Infrastructure.Pipeline;
 /// </summary>
 internal sealed class AlertActionExecutor(
     ISender sender,
+    IAlertRepository alerts,
+    IUnitOfWork unitOfWork,
     ILogger<AlertActionExecutor> logger) : IAlertActionExecutor
 {
+    /// <summary>
+    /// Closes alerts whose upstream alarm has cleared. Goes through the repository rather than a
+    /// MediatR command because there is no operator here — this is the pipeline reconciling our
+    /// state with the provider's, not a person acknowledging anything.
+    ///
+    /// Saves AlertsDbContext itself. Stage 4's unit of work is Network's and commits only
+    /// NetworkDbContext, so a resolve left uncommitted here would be silently dropped — the same
+    /// reason <c>CreateOrUpdateAlertCommandHandler</c> saves its own context on the create path.
+    /// </summary>
+    public async Task<Result<AlertResolutionsResult>> ResolveAsync(
+        IReadOnlyList<AlertResolutionRequest> resolutions,
+        CancellationToken cancellationToken = default)
+    {
+        int resolved = 0;
+        var changes = new List<SyncChange>();
+
+        foreach (AlertResolutionRequest resolution in resolutions)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            Alert? alert = await alerts.GetActiveByFingerprintAsync(
+                resolution.AnomalyFingerprint, cancellationToken);
+
+            // Already resolved, or never existed. Either way there is nothing to close — a snapshot
+            // that keeps omitting a long-cleared alarm must stay a no-op.
+            if (alert is null)
+            {
+                continue;
+            }
+
+            if (alert.Resolve(resolution.Reason, DateTime.UtcNow))
+            {
+                resolved++;
+                changes.Add(new SyncChange(
+                    "Alert", alert.Code, SyncAction.Archived, alert.TowerCode,
+                    $"Resolved — {resolution.Reason}"));
+
+                logger.LogInformation(
+                    "Alert {AlertCode} resolved — {Reason}", alert.Code, resolution.Reason);
+            }
+        }
+
+        if (resolved > 0)
+        {
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+
+        return Result.Success(new AlertResolutionsResult(resolved, changes));
+    }
+
     public async Task<Result<AlertActionsResult>> ExecuteAsync(
         IReadOnlyList<AlertActionRequest> requests,
         CancellationToken cancellationToken = default)
     {
         int created = 0;
         int updated = 0;
+        var changes = new List<SyncChange>();
 
         foreach (AlertActionRequest request in requests)
         {
@@ -54,10 +109,21 @@ internal sealed class AlertActionExecutor(
 
             if (result.Value.WasCreated) created++;
             else updated++;
+
+            changes.Add(new SyncChange(
+                EntityType: "Alert",
+                EntityKey: $"AL-{Truncate(request.AnomalyFingerprint)}",
+                Action: result.Value.WasCreated ? SyncAction.Created : SyncAction.Updated,
+                SiteCode: request.TowerCode,
+                Detail: $"{request.SeverityWire} — {request.Title}"));
         }
 
-        return Result.Success(new AlertActionsResult(created, updated));
+        return Result.Success(new AlertActionsResult(created, updated, changes));
     }
+
+    /// <summary>Mirrors the Code the command handler builds, so the report names the row the operator will see.</summary>
+    private static string Truncate(string fingerprint) =>
+        fingerprint.Length >= 24 ? fingerprint[..24] : fingerprint;
 
     private static AlertSeverity ParseSeverity(string wire) => wire?.ToUpperInvariant() switch
     {

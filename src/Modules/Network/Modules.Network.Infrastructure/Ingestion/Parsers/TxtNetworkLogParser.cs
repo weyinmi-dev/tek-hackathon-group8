@@ -19,7 +19,7 @@ internal sealed class TxtNetworkLogParser : INetworkLogParser
         fileName.EndsWith(".tsv", StringComparison.OrdinalIgnoreCase) ||
         fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase);
 
-    public async Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    public async Task<Result<NetworkLogParseResult>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
         CancellationToken cancellationToken = default)

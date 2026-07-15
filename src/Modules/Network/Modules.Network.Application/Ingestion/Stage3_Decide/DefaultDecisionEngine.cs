@@ -32,7 +32,7 @@ public sealed class DefaultDecisionEngine(DecisionEngineOptions options) : IDeci
         //      - match found, not resolved → UpdateAlertAction
         //      - match resolved, or no match → CreateAlertAction
         Dictionary<string, DetectedAnomaly> anomalyByFingerprint = DedupeAnomalies(ai.Anomalies);
-        Dictionary<string, AlertSnapshot> liveByFingerprint = activeAlerts
+        var liveByFingerprint = activeAlerts
             .Where(a => !a.IsResolved)
             .GroupBy(a => a.AnomalyFingerprint, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);

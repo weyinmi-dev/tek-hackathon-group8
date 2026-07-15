@@ -371,4 +371,222 @@ export type IngestionRunSummary = {
   deduplicatedFromPriorRun: boolean;
   stageTimings: StageTiming[];
   failureReason: string | null;
+
+  // Synchronisation report. Zeroed for a flat log upload, which syncs nothing.
+  recordsCreated: number;
+  recordsUpdated: number;
+  recordsArchived: number;
+  telemetryRowsAppended: number;
+  warnings: string[];
+  changes: SyncChange[];
+  syncedSites: SyncedSite[];
+
+  // File-index metadata. Nullable because a run that failed before it was persisted has none.
+  fileName: string | null;
+  submittedBy: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  durationMs: number | null;
+};
+
+/**
+ * One record an upload touched. The counts say how many; these say which — the question an operator
+ * actually asks when a sync does something unexpected.
+ *
+ * The API serialises the enum as its name, not its ordinal (the Web.Api pipeline is configured with
+ * a string enum converter), so this is a string union rather than 0 | 1 | 2.
+ */
+export type SyncAction = "Created" | "Updated" | "Archived";
+
+export type SyncChange = {
+  entityType: string;
+  entityKey: string;
+  action: SyncAction;
+  siteCode: string | null;
+  detail: string | null;
+};
+
+/** One site an upload touched — the provenance row the FILES tab renders. */
+export type SyncedSite = {
+  siteCode: string;
+  siteName: string;
+  siteId: string;
+  region: string;
+  provider: string;
+  environment: string;
+  vendor: string | null;
+  technologies: string;
+  healthScore: number | null;
+  requestId: string;
+  snapshotVersion: number;
+  generatedAt: string;
+  capturedAt: string | null;
+};
+
+export type IngestionRunPage = {
+  runs: IngestionRunSummary[];
+  total: number;
+};
+
+// ── Site detail ────────────────────────────────────────────────────────────
+// Mirrors Modules.Network.Application.Sites.SiteDetail — GET /api/network/sites/{code}.
+// Every snapshot-sourced field is nullable: a seeded tower that has never received an OSS
+// snapshot has a name and a status but no provider, no equipment and no readings.
+
+export type SnapshotAlarm = {
+  alarmId: string;
+  severity: string;
+  category: string | null;
+  type: string | null;
+  status: string | null;
+  source: string | null;
+  raisedAt: string | null;
+  description: string | null;
+};
+
+export type SnapshotKpi = { name: string; value: number; unit: string | null };
+
+export type SnapshotEnvironmental = {
+  temperature: number | null;
+  humidity: number | null;
+  batteryVoltage: number | null;
+  generatorFuelPercent: number | null;
+  generatorRunning: boolean | null;
+  mainPowerAvailable: boolean | null;
+  airConditionerStatus: string | null;
+  doorOpen: boolean | null;
+  smokeDetected: boolean | null;
+};
+
+export type SnapshotPerformance = {
+  measurementInterval: string | null;
+  capturedAt: string | null;
+  availabilityPercent: number | null;
+  connectedUsers: number | null;
+  activeVoiceCalls: number | null;
+  activeDataSessions: number | null;
+  downlinkTrafficGb: number | null;
+  uplinkTrafficGb: number | null;
+  averageDownlinkMbps: number | null;
+  averageUplinkMbps: number | null;
+  packetLossPercent: number | null;
+  latencyMs: number | null;
+  callSetupSuccessRate: number | null;
+  callDropRate: number | null;
+  handoverSuccessRate: number | null;
+  cellUtilizationPercent: number | null;
+  kpis: SnapshotKpi[];
+};
+
+export type SiteEquipment = {
+  equipmentId: string;
+  type: string;
+  model: string | null;
+  status: string | null;
+  isActive: boolean;
+  lastSeenAtUtc: string;
+  retiredAtUtc: string | null;
+};
+
+export type SiteTicket = {
+  ticketId: string;
+  status: "Open" | "Completed" | "Archived";
+  priority: string | null;
+  issue: string | null;
+  engineerId: string | null;
+  engineerName: string | null;
+  createdAt: string | null;
+  estimatedArrival: string | null;
+  completedAt: string | null;
+  completedAction: string | null;
+};
+
+export type SiteDetail = {
+  siteCode: string;
+  name: string;
+  region: string;
+  statusWire: string;
+  signalPct: number;
+  loadPct: number;
+  issue: string | null;
+  latitude: number;
+  longitude: number;
+  updatedAtUtc: string;
+
+  provider: string | null;
+  environment: string | null;
+  vendor: string | null;
+  siteId: string | null;
+  technologies: string[];
+  healthScore: number | null;
+  lastSynchronisedAt: string | null;
+  lastHeartbeat: string | null;
+  snapshotVersion: number | null;
+
+  environmental: SnapshotEnvironmental | null;
+  performance: SnapshotPerformance | null;
+  activeAlarms: SnapshotAlarm[];
+
+  equipment: SiteEquipment[];
+  tickets: SiteTicket[];
+  lastMaintenanceDate: string | null;
+  nextScheduledMaintenance: string | null;
+};
+
+// ── Telemetry ──────────────────────────────────────────────────────────────
+// Every metric is nullable on purpose: a feed may omit any of them, and a gap in a series is
+// information. Charts must skip nulls rather than plotting them as zero.
+
+export type SiteTelemetryPoint = {
+  at: string;
+  healthScore: number | null;
+  signalPct: number | null;
+  loadPct: number | null;
+  latencyMs: number | null;
+  temperatureC: number | null;
+  humidityPct: number | null;
+  batteryPct: number | null;
+  dieselPct: number | null;
+  gridUp: boolean | null;
+  downlinkTrafficGb: number | null;
+  uplinkTrafficGb: number | null;
+  connectedUsers: number | null;
+  availabilityPercent: number | null;
+  packetLossPercent: number | null;
+  rsrp: number | null;
+  sinr: number | null;
+  prbUtilization: number | null;
+  openAlarmCount: number;
+};
+
+export type SiteTelemetry = {
+  siteCode: string;
+  hours: number;
+  points: SiteTelemetryPoint[];
+};
+
+// ── Notifications ──────────────────────────────────────────────────────────
+
+export type NotificationKind =
+  | "CriticalAlarm"
+  | "UploadCompleted"
+  | "SynchronizationFailed"
+  | "HealthDegraded"
+  | "PredictionChanged";
+
+export type AppNotification = {
+  id: string;
+  kind: NotificationKind;
+  severity: "info" | "warn" | "critical";
+  title: string;
+  body: string;
+  siteCode: string | null;
+  link: string | null;
+  raisedAtUtc: string;
+  isRead: boolean;
+};
+
+export type NotificationFeed = {
+  items: AppNotification[];
+  unreadCount: number;
 };

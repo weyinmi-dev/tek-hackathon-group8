@@ -38,24 +38,52 @@ internal sealed class GetOptimizationProjectionQueryHandler(ISiteRepository site
         int onBatt = all.Count(s => s.Source == PowerSource.Battery);
         int onGen = total - onSolar - onGrid - onBatt;
 
-        // Same model the design prototype used — kept identical so the OPEX/projection numbers
-        // match what stakeholders saw in the mock. The slope is intentional: more solar +
-        // higher battery threshold = larger reduction; higher diesel price erodes the gain.
-        const double baseCostMPerDay = 21.0;
+        // ── Cost model ──────────────────────────────────────────────────────────
+        // Both curves are exposed to the diesel price, because both burn diesel. The baseline is
+        // the fleet as it runs today — heavily diesel-dependent, so its OPEX moves almost fully
+        // with the pump price. The optimized fleet burns less diesel, so it is exposed to only the
+        // share it still burns.
+        //
+        // That asymmetry is the whole point of the projection: a *rising* diesel price makes
+        // optimization worth MORE, not less. The earlier model held the baseline flat and let the
+        // price only push the optimized line up, which inverted the economics — at a high enough
+        // price it reported that optimizing cost you money. Savings are now non-negative by
+        // construction (see `daily` below), because they are the diesel the optimized fleet did not
+        // buy plus the solar and battery gains.
+        const double ReferenceOpexMPerDay = 21.0;   // fleet OPEX at the reference pump price
+        const double ReferencePriceNgnPerLitre = 900.0;
+        const double DieselSensitivity = 0.004;     // ₦M/day of fleet OPEX per ₦1/L, at today's diesel share
+
+        double priceDelta = request.DieselPriceNgnPerLitre - ReferencePriceNgnPerLitre;
+
+        // Baseline: fully exposed to the price move.
+        double baselineOpex = Math.Max(1.0, ReferenceOpexMPerDay + priceDelta * DieselSensitivity);
+
+        // How much diesel the optimization displaces. Capped: no configuration of these two sliders
+        // takes a tower fully off diesel, and claiming otherwise would overstate the saving.
+        int dieselReduction = (int)Math.Round(request.SolarPct * 0.5 + (request.BatteryThresholdPct - 50) * 0.3);
+        dieselReduction = Math.Clamp(dieselReduction, 0, 90);
+        double retainedDieselShare = 1.0 - dieselReduction / 100.0;
+
         double solarSavings = request.SolarPct * 0.12;
         double battSavings = (request.BatteryThresholdPct - 50) * 0.04;
-        double dieselFactor = (request.DieselPriceNgnPerLitre - 700) * 0.002;
-        double optimized = Math.Max(8, baseCostMPerDay - solarSavings - battSavings + dieselFactor);
-        double daily = baseCostMPerDay - optimized;
+
+        // Optimized: exposed to the price move only on the diesel it still burns, then reduced by
+        // the solar and battery gains.
+        double optimized = Math.Max(
+            6.0,
+            ReferenceOpexMPerDay + priceDelta * DieselSensitivity * retainedDieselShare
+                - solarSavings - battSavings);
+
+        double daily = Math.Max(0, baselineOpex - optimized);
         double annual = daily * 365 / 1000.0;
-        int dieselReduction = (int)Math.Round(request.SolarPct * 0.5 + (request.BatteryThresholdPct - 50) * 0.3);
 
         double[] baseline = new double[30];
         double[] optimizedSeries = new double[30];
         for (int i = 0; i < 30; i++)
         {
-            baseline[i] = baseCostMPerDay + ((i % 5) - 2) * 0.4;
-            optimizedSeries[i] = Math.Max(8, optimized + Math.Sin(i / 3.0) * 0.8);
+            baseline[i] = baselineOpex + (i % 5 - 2) * 0.4;
+            optimizedSeries[i] = Math.Max(6.0, optimized + Math.Sin(i / 3.0) * 0.8);
         }
 
         IReadOnlyList<EnergyMixSlice> mix =
@@ -67,11 +95,11 @@ internal sealed class GetOptimizationProjectionQueryHandler(ISiteRepository site
         ];
 
         return Result.Success(new OptimizationProjectionResponse(
-            BaselineDailyOpexMillionsNgn: baseCostMPerDay,
+            BaselineDailyOpexMillionsNgn: baselineOpex,
             OptimizedDailyOpexMillionsNgn: optimized,
             DailySavingsMillionsNgn: daily,
             AnnualSavingsBillionsNgn: annual,
-            DieselReductionPct: Math.Max(0, dieselReduction),
+            DieselReductionPct: dieselReduction,
             Co2AvoidedTonnesPerYear: request.SolarPct * 42,
             BaselineSeries: baseline,
             OptimizedSeries: optimizedSeries,

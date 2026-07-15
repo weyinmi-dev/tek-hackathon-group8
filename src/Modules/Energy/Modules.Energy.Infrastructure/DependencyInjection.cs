@@ -8,8 +8,10 @@ using Modules.Energy.Domain.Sites;
 using Modules.Energy.Domain.Telemetry;
 using Modules.Energy.Infrastructure.Api;
 using Modules.Energy.Infrastructure.Database;
+using Modules.Energy.Infrastructure.Pipeline;
 using Modules.Energy.Infrastructure.Repositories;
 using Modules.Energy.Infrastructure.Telemetry;
+using Modules.Network.Application.Ingestion.Stage4_Persist;
 using SharedKernel;
 
 namespace Modules.Energy.Infrastructure;
@@ -33,6 +35,9 @@ public static class DependencyInjection
         services.AddScoped<IEnergyPredictionRepository, EnergyPredictionRepository>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IEnergyApi, EnergyApi>();
+
+        // Stage-4 sync port, consumed by Network's ingestion pipeline.
+        services.AddScoped<IEnergySyncExecutor, EnergySyncExecutor>();
 
         // Background mutator — only one process should own this. In a multi-replica deploy
         // it'd live behind a lease; for the single-instance modular monolith it stays here.

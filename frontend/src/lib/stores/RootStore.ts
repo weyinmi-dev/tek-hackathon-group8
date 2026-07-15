@@ -6,6 +6,7 @@ import { ChatStore } from "./ChatStore";
 import { EnergyStore } from "./EnergyStore";
 import { InsightsStore } from "./InsightsStore";
 import { OptimizeStore } from "./OptimizeStore";
+import { SyncStore } from "./SyncStore";
 import { UiStore } from "./UiStore";
 
 /**
@@ -33,6 +34,9 @@ export class RootStore {
   readonly optimize: OptimizeStore;
   readonly insights: InsightsStore;
 
+  /** Synchronisation history, the notification feed, and the post-upload refresh signal. */
+  readonly sync: SyncStore;
+
   constructor() {
     this.auth = new AuthStore();
     this.ui = new UiStore();
@@ -43,6 +47,7 @@ export class RootStore {
     this.energy = new EnergyStore();
     this.optimize = new OptimizeStore();
     this.insights = new InsightsStore();
+    this.sync = new SyncStore();
   }
 
   wireApi(): void {
@@ -61,5 +66,6 @@ export class RootStore {
     this.energy.dispose();
     this.optimize.dispose();
     this.insights.dispose();
+    this.sync.dispose();
   }
 }

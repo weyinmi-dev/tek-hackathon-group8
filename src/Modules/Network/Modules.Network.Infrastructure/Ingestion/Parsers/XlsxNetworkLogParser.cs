@@ -19,7 +19,7 @@ internal sealed class XlsxNetworkLogParser : INetworkLogParser
         contentType.Contains("excel", StringComparison.OrdinalIgnoreCase) ||
         fileName.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase);
 
-    public Task<Result<IReadOnlyList<NetworkEvent>>> ParseAsync(
+    public Task<Result<NetworkLogParseResult>> ParseAsync(
         Guid ingestionRunId,
         Stream content,
         CancellationToken cancellationToken = default)
@@ -33,20 +33,20 @@ internal sealed class XlsxNetworkLogParser : INetworkLogParser
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return Task.FromResult(Result.Failure<IReadOnlyList<NetworkEvent>>(
+                return Task.FromResult(Result.Failure<NetworkLogParseResult>(
                     NetworkLogErrors.MalformedFile($"invalid XLSX: {ex.Message}")));
             }
 
             IXLWorksheet? sheet = workbook.Worksheets.FirstOrDefault();
             if (sheet is null)
             {
-                return Task.FromResult(Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile()));
+                return Task.FromResult(Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile()));
             }
 
             IXLRow? headerRow = sheet.FirstRowUsed();
             if (headerRow is null)
             {
-                return Task.FromResult(Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile()));
+                return Task.FromResult(Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile()));
             }
 
             string[] headers = headerRow.CellsUsed().Select(c => c.GetString()).ToArray();
@@ -54,7 +54,7 @@ internal sealed class XlsxNetworkLogParser : INetworkLogParser
             Result<XlsxHeaderIndex> headerResult = XlsxHeaderIndex.Build(headers);
             if (headerResult.IsFailure)
             {
-                return Task.FromResult(Result.Failure<IReadOnlyList<NetworkEvent>>(headerResult.Error));
+                return Task.FromResult(Result.Failure<NetworkLogParseResult>(headerResult.Error));
             }
 
             XlsxHeaderIndex idx = headerResult.Value;
@@ -74,7 +74,7 @@ internal sealed class XlsxNetworkLogParser : INetworkLogParser
                 Result<NetworkEvent> rowResult = idx.BuildEvent(ingestionRunId, row, rowNumber);
                 if (rowResult.IsFailure)
                 {
-                    return Task.FromResult(Result.Failure<IReadOnlyList<NetworkEvent>>(rowResult.Error));
+                    return Task.FromResult(Result.Failure<NetworkLogParseResult>(rowResult.Error));
                 }
 
                 events.Add(rowResult.Value);
@@ -82,10 +82,10 @@ internal sealed class XlsxNetworkLogParser : INetworkLogParser
 
             if (events.Count == 0)
             {
-                return Task.FromResult(Result.Failure<IReadOnlyList<NetworkEvent>>(NetworkLogErrors.EmptyFile()));
+                return Task.FromResult(Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile()));
             }
 
-            return Task.FromResult(Result.Success<IReadOnlyList<NetworkEvent>>(events));
+            return Task.FromResult(Result.Success(NetworkLogParseResult.FromEvents(events)));
         }
         finally
         {

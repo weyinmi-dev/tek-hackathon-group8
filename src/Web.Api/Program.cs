@@ -94,7 +94,7 @@ builder.Services
     .AddInfrastructure(builder.Configuration)
     .AddIdentityApplication()
     .AddIdentityInfrastructure(builder.Configuration)
-    .AddNetworkApplication()
+    .AddNetworkApplication(builder.Configuration)
     .AddNetworkInfrastructure(builder.Configuration)
     .AddAlertsApplication()
     .AddAlertsInfrastructure(builder.Configuration)
@@ -132,7 +132,24 @@ if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
+}
+
+// Schema bootstrap + demo seed. Both are idempotent, and both used to be gated behind
+// IsDevelopment() — which meant the docker-compose stack, whose whole point is running
+// with ASPNETCORE_ENVIRONMENT=Production once real secrets are wired, booted against an
+// empty database: no tables, no demo user, every request 500. The flags are config-driven
+// so the environment no longer decides this; Development still defaults both to on.
+// SeedData without AutoMigrate assumes the schema already exists.
+bool autoMigrate = app.Configuration.GetValue("Database:AutoMigrate", app.Environment.IsDevelopment());
+bool seedData = app.Configuration.GetValue("Database:SeedData", app.Environment.IsDevelopment());
+
+if (autoMigrate)
+{
     await app.ApplyMigrationsAsync();
+}
+
+if (seedData)
+{
     await app.SeedDataAsync();
 }
 

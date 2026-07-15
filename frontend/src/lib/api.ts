@@ -27,6 +27,10 @@ import type {
   EnergyRecommendation,
   EnergyMetricsResponse,
   IngestionRunSummary,
+  IngestionRunPage,
+  SiteDetail,
+  SiteTelemetry,
+  NotificationFeed,
 } from "./types";
 
 const API_BASE = "/api";
@@ -285,6 +289,42 @@ export const api = {
         method: "POST",
         body: form,
       }),
+
+    // ── Synchronisation history ──────────────────────────────────────────
+    // One record set, two views: the RUNS tab reads the counts, the FILES tab reads the
+    // file metadata and provenance. Same endpoint, so they can never disagree.
+    ingestionRuns: (opts: {
+      siteCode?: string;
+      provider?: string;
+      search?: string;
+      skip?: number;
+      take?: number;
+    } = {}) => {
+      const q = new URLSearchParams();
+      if (opts.siteCode) q.set("siteCode", opts.siteCode);
+      if (opts.provider) q.set("provider", opts.provider);
+      if (opts.search) q.set("search", opts.search);
+      if (opts.skip != null) q.set("skip", String(opts.skip));
+      if (opts.take != null) q.set("take", String(opts.take));
+      const qs = q.toString();
+      return request<IngestionRunPage>(
+        `/network/ingestion-runs${qs ? "?" + qs : ""}`,
+      );
+    },
+
+    ingestionRun: (id: string) =>
+      request<IngestionRunSummary>(
+        `/network/ingestion-runs/${encodeURIComponent(id)}`,
+      ),
+
+    // ── Site state + history ─────────────────────────────────────────────
+    siteDetail: (code: string) =>
+      request<SiteDetail>(`/network/sites/${encodeURIComponent(code)}`),
+
+    siteTelemetry: (code: string, hours: number) =>
+      request<SiteTelemetry>(
+        `/network/sites/${encodeURIComponent(code)}/telemetry?hours=${hours}`,
+      ),
     // Convenience wrapper: fetches bytes from a URL (e.g. a OneDrive direct-
     // download link) in the browser, then forwards them as a multipart upload.
     // The browser/extension must be allowed to read the URL (CORS / signed
@@ -366,6 +406,24 @@ export const api = {
         `/energy/recommendations${qs}`,
       );
     },
+  },
+
+  // Operator notification feed: critical alarms, uploads, sync failures, partial syncs.
+  // Polled like everything else — the backend has no push transport.
+  notifications: {
+    list: (opts: { unreadOnly?: boolean; take?: number } = {}) => {
+      const q = new URLSearchParams();
+      if (opts.unreadOnly) q.set("unreadOnly", "true");
+      if (opts.take != null) q.set("take", String(opts.take));
+      const qs = q.toString();
+      return request<NotificationFeed>(`/notifications${qs ? "?" + qs : ""}`);
+    },
+    markRead: (id: string) =>
+      request<void>(`/notifications/${encodeURIComponent(id)}/read`, {
+        method: "POST",
+      }),
+    markAllRead: () =>
+      request<number>("/notifications/read-all", { method: "POST" }),
   },
 };
 

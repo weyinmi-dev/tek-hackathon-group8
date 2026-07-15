@@ -25,6 +25,35 @@ namespace Web.Api.Endpoints.Geo;
 /// </summary>
 public sealed class GeoEnricher(ISiteGeoLookup geoLookup, ILogger<GeoEnricher> logger)
 {
+    /// <summary>
+    /// Cache-only variant used by the batch path. A miss is a null, not an OSM call — see
+    /// <see cref="ForSitesAsync"/> for why that distinction is the whole point.
+    /// </summary>
+    private async Task<GeoSummary?> ForCachedSiteAsync(string? siteCode, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(siteCode)) return null;
+        try
+        {
+            SiteGeoContext? ctx = await geoLookup.GetCachedAsync(siteCode, cancellationToken);
+            return ctx is null ? null : Map(ctx);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // A cache outage must not take the page with it. Geo is decoration.
+            logger.LogWarning(ex, "Cached geo read failed for site {SiteCode}; returning null geo.", siteCode);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Full lookup, including live OSM calls on a cache miss. Only for the single-site endpoint,
+    /// where an operator has explicitly asked for one site's geo context and is waiting on it.
+    /// Never call this in a loop over a list — that is what <see cref="ForSitesAsync"/> is for.
+    /// </summary>
     public async Task<GeoSummary?> ForSiteAsync(string? siteCode, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(siteCode)) return null;
@@ -47,25 +76,30 @@ public sealed class GeoEnricher(ISiteGeoLookup geoLookup, ILogger<GeoEnricher> l
     }
 
     /// <summary>
-    /// Maximum wall-clock budget for an entire geo enrichment batch. Public Overpass
-    /// queues per-IP and routinely takes 20–30s per query under load, so the original
-    /// 8s ceiling killed every cold-cache batch outright and Redis never warmed —
-    /// /api/alerts shipped <c>geo: null</c> on every request even for valid towers.
-    /// 30s is the realistic ceiling: long enough that two sequential Overpass calls
-    /// per site in parallel can finish on a slow day, still well under Next.js dev
-    /// rewrite + Aspire DCP socket limits. Once Redis is warm (24h TTL) requests
-    /// resolve in single-digit ms regardless. The startup warmer (GeoCacheWarmer)
-    /// pre-fills the cache out of band so users don't pay this cost on the first
-    /// page load after a deploy.
+    /// Wall-clock ceiling for a batch. It is small because a batch now only reads Redis — see
+    /// <see cref="ForSitesAsync"/>. Two seconds is a cache outage, not a slow lookup.
+    ///
+    /// It used to be 30 seconds, to accommodate live Overpass calls on a cache miss. That was the
+    /// bug: a list endpoint would sit on the full budget whenever OSM was slow or unreachable, so
+    /// /api/alerts and /api/energy/sites took 30 seconds to return rows the database had produced in
+    /// milliseconds — and because a failed lookup was never cached, every refresh paid it again.
     /// </summary>
-    private static readonly TimeSpan BatchBudget = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan BatchBudget = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// Resolve a batch of distinct site codes in parallel. Duplicates collapse before
-    /// dispatch so we never issue two OSM calls for the same code in one request.
-    /// Per-item failures degrade silently to a missing dictionary entry (see class doc).
-    /// The whole batch is bounded by <see cref="BatchBudget"/> — late stragglers are
-    /// abandoned so the endpoint never waits longer than the proxy will tolerate.
+    /// Resolve a batch of distinct site codes from the geo CACHE ONLY. A site that has not been
+    /// warmed yet simply comes back without geo; nothing here goes near the network.
+    ///
+    /// This is the difference between decoration and a stall. The class contract has always said geo
+    /// "must never block the core response", but the batch used to call
+    /// <see cref="ISiteGeoLookup.GetAsync"/>, which issues three sequential OSM queries on a cache
+    /// miss. Every site the operator created that the startup warmer didn't know about — every site
+    /// arriving from an OSS snapshot, for instance — was a guaranteed miss, and the alerts and energy
+    /// pages spent the full batch budget waiting on an OSM that could not answer.
+    ///
+    /// The cache is filled out of band by <c>GeoCacheWarmer</c>, and by the per-site endpoint
+    /// (<c>GET /geo/site/{code}</c>) when an operator selects a site on the map and is willing to
+    /// wait for the answer. Both are off the page-load path, which is where they belong.
     /// </summary>
     public async Task<IReadOnlyDictionary<string, GeoSummary>> ForSitesAsync(
         IEnumerable<string?> siteCodes,
@@ -85,7 +119,7 @@ public sealed class GeoEnricher(ISiteGeoLookup geoLookup, ILogger<GeoEnricher> l
         // Linked CTS: the request CT (client disconnect / shutdown) PLUS our batch
         // budget timeout. Either firing cancels every in-flight OSM HTTP call so the
         // HttpClient inside OsmClient releases the socket immediately.
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(BatchBudget);
 
         Task<(string Code, GeoSummary? Geo)>[] tasks = distinct
@@ -93,7 +127,7 @@ public sealed class GeoEnricher(ISiteGeoLookup geoLookup, ILogger<GeoEnricher> l
             {
                 try
                 {
-                    GeoSummary? geo = await ForSiteAsync(code, cts.Token);
+                    GeoSummary? geo = await ForCachedSiteAsync(code, cts.Token);
                     return (code, geo);
                 }
                 catch (OperationCanceledException)

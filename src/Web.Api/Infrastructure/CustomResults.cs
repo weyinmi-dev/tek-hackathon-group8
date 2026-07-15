@@ -55,6 +55,13 @@ public static class CustomResults
             errorType switch
             {
                 ErrorType.Validation => StatusCodes.Status400BadRequest,
+
+                // Problem is a client-side problem, not a server fault — GetType above already points
+                // it at RFC 7231 §6.5.1, which is Bad Request. It was missing here and fell through to
+                // the 500 default, so every "your file is malformed" error surfaced to the user as
+                // "An unexpected error occurred" with no clue what was wrong with the file.
+                ErrorType.Problem => StatusCodes.Status400BadRequest,
+
                 ErrorType.NotFound => StatusCodes.Status404NotFound,
                 ErrorType.Conflict => StatusCodes.Status409Conflict,
                 ErrorType.Forbidden => StatusCodes.Status403Forbidden,

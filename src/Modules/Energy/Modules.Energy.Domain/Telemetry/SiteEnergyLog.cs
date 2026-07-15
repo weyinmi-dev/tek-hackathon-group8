@@ -34,11 +34,24 @@ public sealed class SiteEnergyLog : Entity
     public int ActiveSourceCode { get; private set; }
     public long CostNgnDelta { get; private set; }
 
+    /// <summary>Live tick: the reading is being taken right now, so "now" is the correct stamp.</summary>
     public static SiteEnergyLog Snapshot(
         string siteCode, int battPct, int dieselPct, double solarKw, bool gridUp,
         int activeSourceCode, long costNgnDelta) =>
         new(Guid.NewGuid(), siteCode, DateTime.UtcNow, battPct, dieselPct, solarKw, gridUp,
             activeSourceCode, costNgnDelta);
+
+    /// <summary>
+    /// Reported reading: the measurement was taken when the provider says it was, which is not when
+    /// we happened to receive the file. Stamping an ingested snapshot with the wall clock would file
+    /// yesterday's readings under today and bend every trend that reads this table — and would make
+    /// a backfill of historical snapshots land as a vertical spike at the moment of upload.
+    /// </summary>
+    public static SiteEnergyLog Reported(
+        string siteCode, DateTime recordedAtUtc, int battPct, int dieselPct, double solarKw, bool gridUp,
+        int activeSourceCode, long costNgnDelta) =>
+        new(Guid.NewGuid(), siteCode, DateTime.SpecifyKind(recordedAtUtc, DateTimeKind.Utc),
+            battPct, dieselPct, solarKw, gridUp, activeSourceCode, costNgnDelta);
 }
 
 public interface ISiteEnergyLogRepository

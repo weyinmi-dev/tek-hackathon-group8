@@ -3,17 +3,19 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { observer } from "mobx-react-lite";
+import { SkeletonRows } from "@/components/Skeleton";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, Pill, Section } from "@/components/UI";
 import { GeoBadge } from "@/components/GeoBadge";
 import { useAuth } from "@/lib/auth";
 import { isManager } from "@/lib/rbac";
-import { useAlertsStore } from "@/lib/stores/StoreProvider";
+import { useAlertsStore, useSyncStore } from "@/lib/stores/StoreProvider";
 import type { Alert } from "@/lib/types";
 
 const AlertsPage = observer(function AlertsPage() {
   const router = useRouter();
   const store = useAlertsStore();
+  const sync = useSyncStore();
   const { user } = useAuth();
 
   // Re-fetch whenever the persisted filter changes. The store decides which alert
@@ -25,7 +27,7 @@ const AlertsPage = observer(function AlertsPage() {
     void store.load();
     const id = setInterval(() => void store.load(), 30_000);
     return () => clearInterval(id);
-  }, [store, store.filter]);
+  }, [store, store.filter, sync.version]);
 
   async function assign(a: Alert): Promise<void> {
     const team = window.prompt(`Assign ${a.id} to which NOC team?`, a.assignedTeam ?? "field-team-3")?.trim();
@@ -159,9 +161,7 @@ const AlertsPage = observer(function AlertsPage() {
             </div>
           )}
           {!store.error && store.loading && store.alerts.length === 0 && (
-            <div className="mono" style={{ color: "var(--ink-3)", padding: 14, fontSize: 11.5 }}>
-              ⌁ Loading alerts…
-            </div>
+            <SkeletonRows rows={6} />
           )}
           {!store.error && !store.loading && store.visible.length === 0 && (
             <div className="mono" style={{ color: "var(--ink-3)", padding: 14, fontSize: 11.5 }}>

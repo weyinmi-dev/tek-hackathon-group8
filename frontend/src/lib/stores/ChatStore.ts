@@ -22,6 +22,21 @@ export interface ChatMessage {
   createdAtUtc: string;
   pending?: boolean;
   error?: string;
+
+  /**
+   * This turn never reached the server, so nothing about it was saved. It must be rendered as a
+   * failure and not as an answer.
+   *
+   * Without this flag the failure card went through the same formatter as a real reply — same
+   * ROOT CAUSE / AFFECTED / RECOMMENDED ACTIONS layout, same highlighted tokens, same confidence
+   * line. An operator read it as an answer, reloaded, and found it gone; "the backend was down"
+   * became "the Copilot lost my queries". A failure has to look like one.
+   */
+  failed?: boolean;
+
+  /** The question to re-send when the user retries a failed turn. */
+  retryQuery?: string;
+
   // Assistant only — derived from messages.metadata for replay.
   provider?: string;
   confidence?: number;
@@ -260,18 +275,23 @@ export class ChatStore {
       const msg = e instanceof Error ? e.message : "Copilot is unavailable.";
       const fallback = buildFallbackAnswer(e, msg);
       runInAction(() => {
-        // Mark the optimistic user message resolved (no longer pending) and append
-        // an assistant error card so the user can see what went wrong + retry.
-        this.messages = this.messages.map(m => m.id === tempId ? { ...m, pending: false, error: msg } : m);
+        // The turn never reached the server. Mark BOTH halves as failed — the question so the user
+        // can see it was not sent, and the diagnostic so it renders as a failure card rather than
+        // going through the answer formatter and passing itself off as a reply.
+        this.messages = this.messages.map(m =>
+          m.id === tempId ? { ...m, pending: false, error: msg, failed: true } : m,
+        );
         this.messages = [...this.messages, {
           id: `err-${Date.now()}`,
           role: "assistant",
           content: fallback,
           createdAtUtc: new Date().toISOString(),
           provider: "error",
-          confidence: 0.1,
+          confidence: 0,
           skillTrace: [],
           attachments: [],
+          failed: true,
+          retryQuery: trimmed,
         }];
       });
     } finally {
@@ -280,6 +300,21 @@ export class ChatStore {
         this.pendingTrace = [];
       });
     }
+  }
+
+  /**
+   * Re-send a turn that failed. Drops the failed question and its error card first, so a successful
+   * retry leaves one clean exchange rather than a graveyard of attempts — and so the transcript on
+   * screen matches the one the server actually stored.
+   */
+  async retry(query: string): Promise<void> {
+    if (this.sending) return;
+
+    runInAction(() => {
+      this.messages = this.messages.filter(m => !m.failed);
+    });
+
+    await this.ask(query);
   }
 
   async deleteConversation(id: string): Promise<void> {

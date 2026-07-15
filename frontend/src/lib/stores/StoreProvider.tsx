@@ -38,6 +38,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     store.energy.boot();
     store.optimize.boot();
     store.insights.boot();
+    store.sync.boot();
+
+    // The notification bell lives in the TopBar, which is on every authed page, so its poll is
+    // owned here rather than by any one page — otherwise navigating away from that page would
+    // silently stop the alerts an operator is relying on.
+    store.sync.startNotificationsRefresh();
   }, [store]);
 
   return <StoreContext.Provider value={store}>{children}</StoreContext.Provider>;
@@ -58,3 +64,4 @@ export const useAnomaliesStore  = () => useStores().anomalies;
 export const useEnergyStore     = () => useStores().energy;
 export const useOptimizeStore   = () => useStores().optimize;
 export const useInsightsStore   = () => useStores().insights;
+export const useSyncStore       = () => useStores().sync;

@@ -11,6 +11,10 @@ public sealed class IngestionRun : Entity
 {
     private readonly List<StageTiming> _stageTimings = [];
 
+    // Not readonly: EF writes this field directly when materialising a run, and for a row that
+    // predates the column it writes null. Complete() has to be able to put a list back.
+    private List<SyncChange> _changes = [];
+
     private IngestionRun(
         Guid id,
         string contentHash,
@@ -48,7 +52,36 @@ public sealed class IngestionRun : Entity
     public int OptimizationsCreated { get; private set; }
     public bool TopologyChanged { get; private set; }
 
+    // ── Synchronisation report ────────────────────────────────────────────────
+    // Persisted on the run so the sync-history view can render "what did this upload change?"
+    // straight from the run, without recomputing it from six modules' tables after the fact.
+    public int RecordsCreated { get; private set; }
+    public int RecordsUpdated { get; private set; }
+    public int RecordsArchived { get; private set; }
+    public int TelemetryRowsAppended { get; private set; }
+
+    /// <summary>
+    /// Non-fatal problems, newline-separated. A feed is allowed to be imperfect; the run still
+    /// succeeds, but a partially-applied sync must never be presented as a clean one.
+    /// </summary>
+    public string? Warnings { get; private set; }
+
     public IReadOnlyList<StageTiming> StageTimings => _stageTimings.AsReadOnly();
+
+    /// <summary>
+    /// The itemised list of records this upload created, updated or archived.
+    ///
+    /// Null-guarded, and it has to be. The column is nullable — it must be, or the schema reconciler
+    /// cannot add it to a database that already has this table — so every run that predates the
+    /// column reads back with a NULL there. EF skips the value converter for a NULL provider value
+    /// and assigns null straight into the backing field, which is how listing the run history started
+    /// throwing a NullReferenceException the moment the list reached a run older than this feature.
+    /// A run with no recorded changes has an empty list, not a null one.
+    /// </summary>
+    public IReadOnlyList<SyncChange> Changes => _changes is null ? [] : _changes.AsReadOnly();
+
+    /// <summary>Wall-clock duration of the run — what the history view shows as "processing time".</summary>
+    public TimeSpan? Duration => CompletedAt is { } done ? done - StartedAt : null;
 
     public static IngestionRun Start(
         string contentHash,
@@ -111,6 +144,13 @@ public sealed class IngestionRun : Entity
         AlertsUpdated = counts.AlertsUpdated;
         OptimizationsCreated = counts.OptimizationsCreated;
         TopologyChanged = counts.TopologyChanged;
+        RecordsCreated = counts.RecordsCreated;
+        RecordsUpdated = counts.RecordsUpdated;
+        RecordsArchived = counts.RecordsArchived;
+        TelemetryRowsAppended = counts.TelemetryRowsAppended;
+        Warnings = counts.Warnings.Count > 0 ? string.Join('\n', counts.Warnings) : null;
+
+        _changes = [.. counts.Changes];
         CompletedAt = completedAt;
         Status = IngestionStatus.Completed;
     }
@@ -135,4 +175,14 @@ public sealed record IngestionRunCounts(
     int AlertsCreated,
     int AlertsUpdated,
     int OptimizationsCreated,
-    bool TopologyChanged);
+    bool TopologyChanged,
+    int RecordsCreated = 0,
+    int RecordsUpdated = 0,
+    int RecordsArchived = 0,
+    int TelemetryRowsAppended = 0,
+    IReadOnlyList<string>? Warnings = null,
+    IReadOnlyList<SyncChange>? Changes = null)
+{
+    public IReadOnlyList<string> Warnings { get; init; } = Warnings ?? [];
+    public IReadOnlyList<SyncChange> Changes { get; init; } = Changes ?? [];
+}

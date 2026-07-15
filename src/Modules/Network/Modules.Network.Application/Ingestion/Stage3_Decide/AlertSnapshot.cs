@@ -13,7 +13,14 @@ public sealed record AlertSnapshot(
     PipelineAlertSeverity Severity,
     DateTimeOffset LastSeenAt,
     int OccurrenceCount,
-    bool IsResolved);
+    bool IsResolved,
+
+    /// <summary>
+    /// The site this alert is against. Needed to scope alarm clearance: a snapshot of one site says
+    /// nothing about whether another site's alarms are still up, so without the code the planner
+    /// could not tell which live alerts an upload is entitled to resolve.
+    /// </summary>
+    string TowerCode);
 
 public sealed record TowerSnapshot(
     string Code,

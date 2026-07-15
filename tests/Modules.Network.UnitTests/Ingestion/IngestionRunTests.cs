@@ -1,3 +1,4 @@
+using System.Reflection;
 using FluentAssertions;
 using Modules.Network.Domain.Ingestion;
 using Xunit;
@@ -184,5 +185,46 @@ public sealed class IngestionRunTests
         run.TransitionTo(IngestionStatus.Persisting);
         run.TransitionTo(IngestionStatus.Projecting);
         return run;
+    }
+
+    /// <summary>
+    /// A run that predates the `changes` column reads back with NULL in it, and EF skips the value
+    /// converter for a NULL provider value — writing null straight into the backing field. The list
+    /// history then threw a NullReferenceException the moment it reached one of those runs, which is
+    /// every deployment with any prior upload. A run with no recorded changes has an empty list.
+    /// </summary>
+    [Fact]
+    public void ARunWhoseChangesColumnIsNull_ReadsBackAsAnEmptyList_NotACrash()
+    {
+        IngestionRun run = NewRun();
+
+        // Exactly what EF does when it materialises a row whose jsonb column is NULL.
+        typeof(IngestionRun)
+            .GetField("_changes", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(run, null);
+
+        Action read = () => _ = run.Changes;
+
+        read.Should().NotThrow();
+        run.Changes.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void CompletingARunWhoseChangesFieldIsNull_StillRecordsItsChanges()
+    {
+        IngestionRun run = WalkToProjecting();
+
+        typeof(IngestionRun)
+            .GetField("_changes", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .SetValue(run, null);
+
+        run.Complete(
+            new IngestionRunCounts(
+                AnomaliesDetected: 0, AlertsCreated: 0, AlertsUpdated: 0,
+                OptimizationsCreated: 0, TopologyChanged: false,
+                Changes: [new SyncChange("Tower", "LAG0456", SyncAction.Created, "LAG0456", "created")]),
+            DateTimeOffset.UtcNow);
+
+        run.Changes.Should().ContainSingle().Which.EntityKey.Should().Be("LAG0456");
     }
 }

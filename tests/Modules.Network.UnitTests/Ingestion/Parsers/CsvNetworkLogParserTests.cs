@@ -1,3 +1,4 @@
+using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using FluentAssertions;
 using Modules.Network.Domain.Ingestion;
 using Modules.Network.Infrastructure.Ingestion.Parsers;
@@ -27,13 +28,13 @@ public sealed class CsvNetworkLogParserTests
             "2026-05-05T08:00:00Z,LOS-T-014,98,42,18,OK\n" +
             "2026-05-05T08:05:00Z,los-t-014,71,87,42,Degraded\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().HaveCount(2);
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events.Should().HaveCount(2);
 
-        NetworkEvent first = result.Value[0];
+        NetworkEvent first = parsed.Value.Events[0];
         first.IngestionRunId.Should().Be(SampleRunId);
         first.TowerCode.Should().Be("LOS-T-014");
         first.SignalPct.Should().Be(98);
@@ -43,7 +44,7 @@ public sealed class CsvNetworkLogParserTests
         first.OccurredAt.Should().Be(DateTimeOffset.Parse("2026-05-05T08:00:00Z"));
 
         // Lower-case input gets uppercased by NetworkEvent.Create
-        result.Value[1].TowerCode.Should().Be("LOS-T-014");
+        parsed.Value.Events[1].TowerCode.Should().Be("LOS-T-014");
     }
 
     [Fact]
@@ -53,15 +54,15 @@ public sealed class CsvNetworkLogParserTests
             "timestamp,tower_code\n" +
             "2026-05-05T08:00:00Z,LOS-T-014\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().HaveCount(1);
-        result.Value[0].SignalPct.Should().BeNull();
-        result.Value[0].LoadPct.Should().BeNull();
-        result.Value[0].LatencyMs.Should().BeNull();
-        result.Value[0].RawStatus.Should().BeNull();
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events.Should().HaveCount(1);
+        parsed.Value.Events[0].SignalPct.Should().BeNull();
+        parsed.Value.Events[0].LoadPct.Should().BeNull();
+        parsed.Value.Events[0].LatencyMs.Should().BeNull();
+        parsed.Value.Events[0].RawStatus.Should().BeNull();
     }
 
     [Fact]
@@ -71,12 +72,12 @@ public sealed class CsvNetworkLogParserTests
             "timestamp,signal_pct\n" +
             "2026-05-05T08:00:00Z,98\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MissingColumn");
-        result.Error.Description.Should().Contain("tower_code");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MissingColumn");
+        parsed.Error.Description.Should().Contain("tower_code");
     }
 
     [Fact]
@@ -87,13 +88,13 @@ public sealed class CsvNetworkLogParserTests
             "2026-05-05T08:00:00Z,LOS-T-014\n" +
             "not-a-date,LOS-T-014\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MalformedRow");
-        result.Error.Description.Should().Contain("Row 3");
-        result.Error.Description.Should().Contain("not-a-date");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MalformedRow");
+        parsed.Error.Description.Should().Contain("Row 3");
+        parsed.Error.Description.Should().Contain("not-a-date");
     }
 
     [Theory]
@@ -106,12 +107,12 @@ public sealed class CsvNetworkLogParserTests
             $"timestamp,tower_code,{column}\n" +
             $"2026-05-05T08:00:00Z,LOS-T-014,{badValue}\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MalformedRow");
-        result.Error.Description.Should().Contain(expectedReason);
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MalformedRow");
+        parsed.Error.Description.Should().Contain(expectedReason);
     }
 
     [Fact]
@@ -121,11 +122,11 @@ public sealed class CsvNetworkLogParserTests
             "timestamp,tower_code,latency_ms\n" +
             "2026-05-05T08:00:00Z,LOS-T-014,-1\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Description.Should().Contain("cannot be negative");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Description.Should().Contain("cannot be negative");
     }
 
     [Fact]
@@ -133,21 +134,21 @@ public sealed class CsvNetworkLogParserTests
     {
         const string csv = "timestamp,tower_code\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.EmptyFile");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.EmptyFile");
     }
 
     [Fact]
     public async Task ParseAsync_TotallyEmptyStreamFailsAsEmpty()
     {
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(""), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.EmptyFile");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.EmptyFile");
     }
 
     [Fact]
@@ -157,11 +158,11 @@ public sealed class CsvNetworkLogParserTests
             "status,signal_pct,latency_ms,tower_code,load_pct,timestamp\n" +
             "OK,98,18,LOS-T-014,42,2026-05-05T08:00:00Z\n";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(csv), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value[0].SignalPct.Should().Be(98);
-        result.Value[0].TowerCode.Should().Be("LOS-T-014");
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events[0].SignalPct.Should().Be(98);
+        parsed.Value.Events[0].TowerCode.Should().Be("LOS-T-014");
     }
 }

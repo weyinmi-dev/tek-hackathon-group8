@@ -1,3 +1,5 @@
+using Application.Abstractions.Pipeline;
+using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using FluentAssertions;
 using Modules.Network.Domain.Ingestion;
 using Modules.Network.Infrastructure.Ingestion.Parsers;
@@ -9,7 +11,7 @@ namespace Modules.Network.UnitTests.Ingestion.Parsers;
 
 public sealed class JsonNetworkLogParserTests
 {
-    private readonly JsonNetworkLogParser _parser = new();
+    private readonly JsonNetworkLogParser _parser = new(new SnapshotCalibrationOptions());
 
     [Theory]
     [InlineData("application/json", "ops.json", true)]
@@ -28,16 +30,16 @@ public sealed class JsonNetworkLogParserTests
         ]
         """;
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().HaveCount(2);
-        result.Value[0].TowerCode.Should().Be("LOS-T-014");
-        result.Value[0].SignalPct.Should().Be(98);
-        result.Value[0].LatencyMs.Should().Be(18);
-        result.Value[1].LatencyMs.Should().BeNull();
-        result.Value[1].RawStatus.Should().BeNull();
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events.Should().HaveCount(2);
+        parsed.Value.Events[0].TowerCode.Should().Be("LOS-T-014");
+        parsed.Value.Events[0].SignalPct.Should().Be(98);
+        parsed.Value.Events[0].LatencyMs.Should().Be(18);
+        parsed.Value.Events[1].LatencyMs.Should().BeNull();
+        parsed.Value.Events[1].RawStatus.Should().BeNull();
     }
 
     [Fact]
@@ -52,11 +54,11 @@ public sealed class JsonNetworkLogParserTests
         }
         """;
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value.Should().HaveCount(1);
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events.Should().HaveCount(1);
     }
 
     [Fact]
@@ -68,11 +70,11 @@ public sealed class JsonNetworkLogParserTests
         ]
         """;
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value[0].SignalPct.Should().Be(98);
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events[0].SignalPct.Should().Be(98);
     }
 
     [Fact]
@@ -80,11 +82,11 @@ public sealed class JsonNetworkLogParserTests
     {
         const string json = "{ this isn't json";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MalformedFile");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MalformedFile");
     }
 
     [Fact]
@@ -92,11 +94,11 @@ public sealed class JsonNetworkLogParserTests
     {
         const string json = "\"just a string\"";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MalformedFile");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MalformedFile");
     }
 
     [Fact]
@@ -104,11 +106,11 @@ public sealed class JsonNetworkLogParserTests
     {
         const string json = "[]";
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.EmptyFile");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.EmptyFile");
     }
 
     [Fact]
@@ -118,13 +120,13 @@ public sealed class JsonNetworkLogParserTests
         [ { "timestamp": "2026-05-05T08:00:00Z" } ]
         """;
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsFailure.Should().BeTrue();
-        result.Error.Code.Should().Be("Network.Ingestion.MalformedRow");
-        result.Error.Description.Should().Contain("Row 1");
-        result.Error.Description.Should().Contain("tower_code");
+        parsed.IsFailure.Should().BeTrue();
+        parsed.Error.Code.Should().Be("Network.Ingestion.MalformedRow");
+        parsed.Error.Description.Should().Contain("Row 1");
+        parsed.Error.Description.Should().Contain("tower_code");
     }
 
     [Fact]
@@ -134,11 +136,11 @@ public sealed class JsonNetworkLogParserTests
         [ { "timestamp": "2026-05-05T08:00:00Z", "tower_code": "LOS-T-014", "extra": "field" } ]
         """;
 
-        Result<IReadOnlyList<NetworkEvent>> result =
+        Result<NetworkLogParseResult> parsed =
             await _parser.ParseAsync(SampleRunId, Utf8Stream(json), CancellationToken.None);
 
-        result.IsSuccess.Should().BeTrue();
-        result.Value[0].RawPayload.Should().NotBeNull();
-        result.Value[0].RawPayload.Should().Contain("extra");
+        parsed.IsSuccess.Should().BeTrue();
+        parsed.Value.Events[0].RawPayload.Should().NotBeNull();
+        parsed.Value.Events[0].RawPayload.Should().Contain("extra");
     }
 }

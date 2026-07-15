@@ -33,7 +33,8 @@ internal sealed class AlertSnapshotProvider(IAlertRepository alerts) : IAlertSna
                     ? new DateTimeOffset(DateTime.SpecifyKind(seen, DateTimeKind.Utc))
                     : new DateTimeOffset(DateTime.SpecifyKind(alert.RaisedAtUtc, DateTimeKind.Utc)),
                 OccurrenceCount: alert.OccurrenceCount ?? 1,
-                IsResolved: false));
+                IsResolved: false,
+                TowerCode: alert.TowerCode));
         }
 
         return snapshots;

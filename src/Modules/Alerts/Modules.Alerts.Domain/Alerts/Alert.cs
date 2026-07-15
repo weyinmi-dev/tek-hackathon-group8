@@ -132,6 +132,68 @@ public sealed class Alert : Entity
         return Result.Success();
     }
 
+    /// <summary>
+    /// Closes the alert because the condition that raised it is gone — the upstream alarm cleared,
+    /// or an OSS snapshot stopped reporting it.
+    ///
+    /// <see cref="AlertStatus.Resolved"/> has existed since the beginning but nothing could reach
+    /// it: alerts could be acknowledged, assigned and dispatched, never closed. Synchronisation
+    /// needs it, because an alarm that clears upstream must stop showing as live here.
+    ///
+    /// Idempotent — resolving an already-resolved alert is a no-op, so a repeated snapshot that
+    /// keeps omitting the alarm does not keep rewriting the row.
+    /// </summary>
+    public bool Resolve(string reason, DateTime resolvedAtUtc)
+    {
+        if (Status == AlertStatus.Resolved)
+        {
+            return false;
+        }
+
+        Status = AlertStatus.Resolved;
+        LastSeenAtUtc = resolvedAtUtc;
+
+        if (!string.IsNullOrWhiteSpace(reason))
+        {
+            AiCause = reason;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The condition came back after being resolved — the same OSS alarm id is being reported again,
+    /// or the same anomaly fingerprint re-fired.
+    ///
+    /// This reopens the existing alert rather than raising a second one. It has to: <see cref="Code"/>
+    /// is derived deterministically from the fingerprint and is uniquely indexed, so "resolved →
+    /// create a new alert" would insert a duplicate code and fail the whole run. Reopening is also
+    /// the truthful model — ALM-100284 coming back is that alarm recurring, not a different alarm —
+    /// and it keeps the incident's history and occurrence count intact instead of starting a fresh
+    /// row that pretends the site has no past.
+    /// </summary>
+    public void Reopen(AlertSeverity severity, double confidence, string? cause, DateTime detectedAtUtc)
+    {
+        Status = AlertStatus.Active;
+        OccurrenceCount = (OccurrenceCount ?? 0) + 1;
+        LastSeenAtUtc = detectedAtUtc;
+        Severity = severity;
+        Confidence = confidence;
+
+        if (!string.IsNullOrWhiteSpace(cause))
+        {
+            AiCause = cause;
+        }
+
+        // A reopened alert is a fresh problem to work: whoever acknowledged the last occurrence has
+        // not seen this one. Clearing the acknowledgement stops a recurring fault hiding behind a
+        // tick someone made yesterday.
+        AcknowledgedAtUtc = null;
+        AcknowledgedBy = null;
+
+        Raise(new AlertRecurredDomainEvent(Id, Code, OccurrenceCount.Value, Severity.ToWire()));
+    }
+
     public Result Acknowledge(string actor)
     {
         if (Status is AlertStatus.Acknowledged or AlertStatus.Resolved)
@@ -233,6 +295,16 @@ public interface IAlertRepository
     /// exists in any non-resolved status. Returns null if no live alert matches.
     /// </summary>
     Task<Alert?> GetActiveByFingerprintAsync(string anomalyFingerprint, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lookup by fingerprint in ANY status, including Resolved.
+    ///
+    /// The create path needs this. <see cref="GetActiveByFingerprintAsync"/> deliberately hides
+    /// resolved alerts, which is right for deciding whether an alert is live — but an alert's Code is
+    /// derived from its fingerprint and is uniquely indexed, so "not live" must not be read as "safe
+    /// to insert a new one". A recurrence of a resolved alert reopens it; see <see cref="Alert.Reopen"/>.
+    /// </summary>
+    Task<Alert?> GetByFingerprintAsync(string anomalyFingerprint, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Read port for <c>IAlertSnapshotProvider</c>: every active fingerprinted alert,

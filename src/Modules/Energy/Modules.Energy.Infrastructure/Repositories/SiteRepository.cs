@@ -17,6 +17,9 @@ internal sealed class SiteRepository(EnergyDbContext db) : ISiteRepository
     public Task<Site?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
         db.Sites.FirstOrDefaultAsync(s => s.Id == id, ct);
 
+    public async Task AddAsync(Site site, CancellationToken ct = default) =>
+        await db.Sites.AddAsync(site, ct);
+
     public async Task AddRangeAsync(IEnumerable<Site> sites, CancellationToken ct = default) =>
         await db.Sites.AddRangeAsync(sites, ct);
 

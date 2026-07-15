@@ -225,6 +225,14 @@ const Message = observer(function Message({ m }: { m: ChatMessage }) {
       </div>
     );
   }
+  // A turn that never reached the server is NOT an answer, and must not be dressed as one. It used
+  // to go through the same formatter as a real reply — accent bar, "TELCOPILOT · ANSWER" header,
+  // ROOT CAUSE headings, highlighted tokens — so an operator read it as a reply, reloaded, and found
+  // it gone. Hence the separate, deliberately un-answer-like card, and the retry.
+  if (m.failed) {
+    return <FailedTurn m={m} />;
+  }
+
   return (
     <div
       style={{
@@ -274,6 +282,103 @@ const Message = observer(function Message({ m }: { m: ChatMessage }) {
         <FormattedAnswer text={m.content} />
         {m.attachments && m.attachments.length > 0 && (
           <CopilotAttachments attachments={m.attachments} />
+        )}
+      </div>
+    </div>
+  );
+});
+
+/**
+ * A turn that never made it to the server.
+ *
+ * Everything about this card is chosen to be un-answer-like: no accent bar, no "ANSWER" header, no
+ * ROOT CAUSE headings, no confidence score, no token highlighting. It says plainly that nothing was
+ * saved, shows the diagnostic, and offers the one action that helps — send it again.
+ */
+const FailedTurn = observer(function FailedTurn({ m }: { m: ChatMessage }) {
+  const chat = useChatStore();
+
+  return (
+    <div
+      style={{
+        alignSelf: "flex-start",
+        maxWidth: "92%",
+        width: "100%",
+        animation: "fadein .35s",
+      }}
+    >
+      <div
+        className="mono uppr"
+        style={{
+          fontSize: 9,
+          color: "var(--crit)",
+          marginBottom: 6,
+          letterSpacing: ".14em",
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <span>⚠</span>
+        NOT SENT · NOTHING WAS SAVED
+      </div>
+
+      <div
+        style={{
+          padding: "14px 16px",
+          borderRadius: "2px 10px 10px 10px",
+          background: "color-mix(in oklch, var(--crit) 6%, transparent)",
+          border: "1px solid color-mix(in oklch, var(--crit) 28%, transparent)",
+          borderLeft: "2px solid var(--crit)",
+          fontSize: 13,
+          lineHeight: 1.6,
+        }}
+      >
+        <div style={{ color: "var(--ink-2)", marginBottom: 10 }}>
+          Your question never reached the Copilot, so no answer was generated and nothing was added
+          to this conversation. Reloading will not bring it back — send it again.
+        </div>
+
+        {/* The diagnostic, as plain preformatted text. Deliberately NOT run through the answer
+            formatter: that is what made a failure look like a reply in the first place. */}
+        <details>
+          <summary
+            className="mono uppr"
+            style={{
+              fontSize: 9,
+              letterSpacing: ".14em",
+              color: "var(--ink-4)",
+              cursor: "pointer",
+            }}
+          >
+            Details
+          </summary>
+          <pre
+            className="mono"
+            style={{
+              margin: "8px 0 0",
+              fontSize: 10.5,
+              lineHeight: 1.6,
+              color: "var(--ink-3)",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+            }}
+          >
+            {m.content}
+          </pre>
+        </details>
+
+        {m.retryQuery && (
+          <div style={{ marginTop: 12 }}>
+            <Btn
+              small
+              primary
+              disabled={chat.sending}
+              onClick={() => void chat.retry(m.retryQuery!)}
+            >
+              {chat.sending ? "Sending…" : "Retry"}
+            </Btn>
+          </div>
         )}
       </div>
     </div>

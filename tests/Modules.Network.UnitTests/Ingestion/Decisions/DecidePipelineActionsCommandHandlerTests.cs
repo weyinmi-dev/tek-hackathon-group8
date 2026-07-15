@@ -111,11 +111,12 @@ public sealed class DecidePipelineActionsCommandHandlerTests
         new(
             new FakeIngestionRunRepository(run),
             new DefaultDecisionEngine(new DecisionEngineOptions()),
+            new SiteSnapshotPlanner(new SnapshotAnomalyOptions(), new SnapshotCalibrationOptions()),
             new FakeAlertSnapshotProvider(activeAlerts ?? []),
             new FakeTowerSnapshotProvider(towers ?? Towers()),
             NullLogger<DecidePipelineActionsCommandHandler>.Instance);
 
-    private sealed class FakeIngestionRunRepository(IngestionRun? run) : IIngestionRunRepository
+    private sealed class FakeIngestionRunRepository(IngestionRun? run) : FakeSnapshotStore, IIngestionRunRepository
     {
         public Task<IngestionRun?> GetByIdAsync(Guid id, CancellationToken ct = default) =>
             Task.FromResult(run is not null && run.Id == id ? run : null);
