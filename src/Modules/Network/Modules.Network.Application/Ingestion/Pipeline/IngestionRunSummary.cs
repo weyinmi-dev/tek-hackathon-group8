@@ -28,6 +28,9 @@ public sealed record IngestionRunSummary(
     int TelemetryRowsAppended = 0,
     IReadOnlyList<string>? Warnings = null,
 
+    /// <summary>Every record the upload touched, itemised. The report's expandable table.</summary>
+    IReadOnlyList<SyncChange>? Changes = null,
+
     // Provenance of the snapshot(s) this run carried. Empty for a flat log upload.
     IReadOnlyList<SyncedSiteSummary>? SyncedSites = null,
 
@@ -38,6 +41,7 @@ public sealed record IngestionRunSummary(
     double? DurationMs = null)
 {
     public IReadOnlyList<string> Warnings { get; init; } = Warnings ?? [];
+    public IReadOnlyList<SyncChange> Changes { get; init; } = Changes ?? [];
     public IReadOnlyList<SyncedSiteSummary> SyncedSites { get; init; } = SyncedSites ?? [];
 }
 

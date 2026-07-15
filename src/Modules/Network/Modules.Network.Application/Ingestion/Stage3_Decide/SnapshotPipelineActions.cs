@@ -1,3 +1,4 @@
+using Application.Abstractions.Pipeline;
 namespace Modules.Network.Application.Ingestion.Stage3_Decide;
 
 /// <summary>
@@ -100,4 +101,10 @@ public sealed record SyncEnergySiteAction(
     string SourceWire,
     bool HasOpenAlarm,
     string? AnomalyNote,
-    DateTime ObservedAtUtc) : PipelineAction(AnomalyFingerprint: string.Empty);
+    DateTime ObservedAtUtc,
+
+    /// <summary>Energy anomalies the rules derived from this reading and the one before it.</summary>
+    IReadOnlyList<DetectedEnergyAnomaly>? Anomalies = null) : PipelineAction(AnomalyFingerprint: string.Empty)
+{
+    public IReadOnlyList<DetectedEnergyAnomaly> Anomalies { get; init; } = Anomalies ?? [];
+}

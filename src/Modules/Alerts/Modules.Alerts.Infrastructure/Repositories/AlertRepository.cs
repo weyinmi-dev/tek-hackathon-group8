@@ -29,6 +29,12 @@ internal sealed class AlertRepository(AlertsDbContext db) : IAlertRepository
             a => a.AnomalyFingerprint == anomalyFingerprint && a.Status != AlertStatus.Resolved,
             cancellationToken);
 
+    // Tracked, and includes resolved alerts: the caller is deciding between reopening and inserting.
+    public Task<Alert?> GetByFingerprintAsync(string anomalyFingerprint, CancellationToken cancellationToken = default) =>
+        db.Alerts.FirstOrDefaultAsync(
+            a => a.AnomalyFingerprint == anomalyFingerprint,
+            cancellationToken);
+
     public async Task<IReadOnlyList<Alert>> ListActiveFingerprintedAsync(CancellationToken cancellationToken = default) =>
         await db.Alerts.AsNoTracking()
             .Where(a => a.AnomalyFingerprint != null && a.Status != AlertStatus.Resolved)

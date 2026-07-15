@@ -30,18 +30,32 @@ internal static class SiteSnapshotDecoder
     public const string BatchProperty = "snapshots";
 
     /// <summary>
-    /// True when the root element is a snapshot document (single or batched). Used by the JSON
-    /// parser to route; a false answer means the document is a flat event log and takes the
-    /// original code path untouched.
+    /// True when the root element is a snapshot document. Used by the JSON parser to route; a false
+    /// answer means the document is a flat event log and takes the original code path untouched.
+    ///
+    /// Three shapes are accepted, because OSS feeds emit all three:
+    ///   <c>{ "site": {...} }</c>            — one site
+    ///   <c>{ "snapshots": [ ... ] }</c>     — a batch under an envelope
+    ///   <c>[ {...}, {...} ]</c>             — a bare array of snapshots
+    ///
+    /// The bare array is the awkward one: a flat event log is *also* a bare array. They are told
+    /// apart by looking at the first object in it — a snapshot carries a nested <c>site</c> object,
+    /// a log row does not. Sniffing the content is the only option here; both arrive as <c>.json</c>
+    /// with the same content type, so there is nothing in the envelope to route on.
     /// </summary>
     public static bool IsSnapshotDocument(JsonElement root)
     {
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            return FirstObject(root) is { } first && LooksLikeSnapshot(first);
+        }
+
         if (root.ValueKind != JsonValueKind.Object)
         {
             return false;
         }
 
-        if (root.TryGetProperty(SiteProperty, out JsonElement site) && site.ValueKind == JsonValueKind.Object)
+        if (LooksLikeSnapshot(root))
         {
             return true;
         }
@@ -49,21 +63,43 @@ internal static class SiteSnapshotDecoder
         return root.TryGetProperty(BatchProperty, out JsonElement batch) && batch.ValueKind == JsonValueKind.Array;
     }
 
-    public static Result<NetworkLogParseResult> Decode(Guid ingestionRunId, JsonElement root)
+    /// <summary>A snapshot is identified by its nested site object — the one thing a log row never has.</summary>
+    private static bool LooksLikeSnapshot(JsonElement element) =>
+        element.ValueKind == JsonValueKind.Object &&
+        element.TryGetProperty(SiteProperty, out JsonElement site) &&
+        site.ValueKind == JsonValueKind.Object;
+
+    private static JsonElement? FirstObject(JsonElement array)
+    {
+        foreach (JsonElement item in array.EnumerateArray())
+        {
+            return item;
+        }
+
+        return null;
+    }
+
+    public static Result<NetworkLogParseResult> Decode(
+        Guid ingestionRunId, JsonElement root, SnapshotCalibrationOptions calibration)
     {
         List<JsonElement> documents = [];
 
-        if (root.TryGetProperty(BatchProperty, out JsonElement batch) && batch.ValueKind == JsonValueKind.Array)
+        if (root.ValueKind == JsonValueKind.Array)
+        {
+            documents.AddRange(root.EnumerateArray());
+        }
+        else if (root.TryGetProperty(BatchProperty, out JsonElement batch) && batch.ValueKind == JsonValueKind.Array)
         {
             documents.AddRange(batch.EnumerateArray());
-            if (documents.Count == 0)
-            {
-                return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile());
-            }
         }
         else
         {
             documents.Add(root);
+        }
+
+        if (documents.Count == 0)
+        {
+            return Result.Failure<NetworkLogParseResult>(NetworkLogErrors.EmptyFile());
         }
 
         var payloads = new List<SiteSnapshotPayload>(documents.Count);
@@ -82,7 +118,7 @@ internal static class SiteSnapshotDecoder
 
             SiteSnapshotPayload payload = decoded.Value;
             payloads.Add(payload);
-            events.Add(ToNetworkEvent(ingestionRunId, payload, document));
+            events.Add(ToNetworkEvent(ingestionRunId, payload, document, calibration));
         }
 
         return Result.Success(new NetworkLogParseResult(events, payloads));
@@ -149,7 +185,9 @@ internal static class SiteSnapshotDecoder
     /// kept verbatim in <c>RawPayload</c>, so nothing is lost by the flattening — Stage 3 reads
     /// the full picture back from the stored snapshot, not from this row.
     /// </summary>
-    private static NetworkEvent ToNetworkEvent(Guid ingestionRunId, SiteSnapshotPayload payload, JsonElement document)
+    private static NetworkEvent ToNetworkEvent(
+        Guid ingestionRunId, SiteSnapshotPayload payload, JsonElement document,
+        SnapshotCalibrationOptions calibration)
     {
         SnapshotPerformanceMetrics? performance = payload.Performance;
 
@@ -163,10 +201,10 @@ internal static class SiteSnapshotDecoder
             occurredAt,
             payload.Site.SiteCode,
             signalPct: SnapshotDerivations.SignalPctFromRsrp(
-                SnapshotDerivations.Kpi(performance?.Kpis, "RSRP")),
+                SnapshotDerivations.Kpi(performance?.Kpis, "RSRP"), calibration),
             loadPct: performance?.CellUtilizationPercent,
             latencyMs: performance?.LatencyMs,
-            rawStatus: SnapshotDerivations.TowerStatusFrom(payload.Site.HealthScore, payload.ActiveAlarms),
+            rawStatus: SnapshotDerivations.TowerStatusFrom(payload.Site.HealthScore, payload.ActiveAlarms, calibration),
             rawPayload: document.GetRawText());
     }
 }

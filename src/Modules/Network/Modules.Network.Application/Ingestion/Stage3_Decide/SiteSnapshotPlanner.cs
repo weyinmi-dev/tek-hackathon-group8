@@ -14,7 +14,9 @@ namespace Modules.Network.Application.Ingestion.Stage3_Decide;
 /// snapshot is the operator's own system of record for a site it owns, so it *may* create one. That
 /// asymmetry is the reason snapshot planning lives here rather than being folded into the AI engine.
 /// </summary>
-public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
+public sealed class SiteSnapshotPlanner(
+    SnapshotAnomalyOptions anomalyOptions,
+    SnapshotCalibrationOptions calibration) : ISiteSnapshotPlanner
 {
     /// <summary>
     /// Prefix that scopes a provider's alarm id into our fingerprint space. Alarm ids are unique
@@ -30,11 +32,13 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
     public IReadOnlyList<PipelineAction> Plan(
         IReadOnlyList<SiteSnapshotPayload> snapshots,
         IReadOnlyList<AlertSnapshot> activeAlerts,
-        IReadOnlyDictionary<string, TowerSnapshot> currentTowers)
+        IReadOnlyDictionary<string, TowerSnapshot> currentTowers,
+        IReadOnlyDictionary<string, SiteSnapshotPayload> previousBySite)
     {
         ArgumentNullException.ThrowIfNull(snapshots);
         ArgumentNullException.ThrowIfNull(activeAlerts);
         ArgumentNullException.ThrowIfNull(currentTowers);
+        ArgumentNullException.ThrowIfNull(previousBySite);
 
         if (snapshots.Count == 0)
         {
@@ -59,10 +63,20 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
         var stillReported = new HashSet<string>(StringComparer.Ordinal);
         var sitesInThisUpload = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (SiteSnapshotPayload snapshot in snapshots)
+        // A batch may carry several readings for the same site. Ordering by capture time means each
+        // one's "previous" is the reading before it *within this upload* — otherwise a batch would
+        // compare every reading against the same stored snapshot and miss the fuel drop between them.
+        var previous = new Dictionary<string, SiteSnapshotPayload>(previousBySite, StringComparer.OrdinalIgnoreCase);
+
+        foreach (SiteSnapshotPayload snapshot in snapshots.OrderBy(s => s.Performance?.CapturedAt ?? s.GeneratedAt))
         {
-            sitesInThisUpload.Add(snapshot.Site.SiteCode);
-            PlanForSite(snapshot, liveAlarmAlerts, currentTowers, actions, stillReported);
+            string code = snapshot.Site.SiteCode;
+            sitesInThisUpload.Add(code);
+
+            previous.TryGetValue(code, out SiteSnapshotPayload? prior);
+            PlanForSite(snapshot, prior, liveAlarmAlerts, currentTowers, actions, stillReported, anomalyOptions, calibration);
+
+            previous[code] = snapshot;
         }
 
         // ── Alarm clearance ─────────────────────────────────────────────────────
@@ -85,10 +99,13 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
 
     private static void PlanForSite(
         SiteSnapshotPayload snapshot,
+        SiteSnapshotPayload? previous,
         IReadOnlyDictionary<string, AlertSnapshot> liveAlarmAlerts,
         IReadOnlyDictionary<string, TowerSnapshot> currentTowers,
         List<PipelineAction> actions,
-        HashSet<string> stillReported)
+        HashSet<string> stillReported,
+        SnapshotAnomalyOptions anomalyOptions,
+        SnapshotCalibrationOptions calibration)
     {
         SnapshotSite site = snapshot.Site;
         SnapshotPerformanceMetrics? performance = snapshot.Performance;
@@ -99,7 +116,7 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
         // would make the planner non-deterministic and break replay.
         DateTime observedAt = (performance?.CapturedAt ?? snapshot.GeneratedAt).UtcDateTime;
 
-        string statusWire = SnapshotDerivations.TowerStatusFrom(site.HealthScore, snapshot.ActiveAlarms);
+        string statusWire = SnapshotDerivations.TowerStatusFrom(site.HealthScore, snapshot.ActiveAlarms, calibration);
         List<SnapshotAlarm> openAlarms = snapshot.ActiveAlarms.Where(SnapshotDerivations.IsOpen).ToList();
 
         // ── Topology ────────────────────────────────────────────────────────────
@@ -109,7 +126,7 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
             Region: site.Region,
             Latitude: site.Latitude,
             Longitude: site.Longitude,
-            SignalPct: SnapshotDerivations.SignalPctFromRsrp(SnapshotDerivations.Kpi(performance?.Kpis, "RSRP")),
+            SignalPct: SnapshotDerivations.SignalPctFromRsrp(SnapshotDerivations.Kpi(performance?.Kpis, "RSRP"), calibration),
             LoadPct: performance?.CellUtilizationPercent,
             StatusWire: statusWire,
             Issue: DescribeIssue(openAlarms)));
@@ -174,7 +191,7 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
         // on a site nobody reported a problem with.
         if (environment is not null)
         {
-            int? battery = SnapshotDerivations.BatteryPctFromVoltage(environment.BatteryVoltage);
+            int? battery = SnapshotDerivations.BatteryPctFromVoltage(environment.BatteryVoltage, calibration);
             int? diesel = environment.GeneratorFuelPercent;
 
             if (battery is not null || diesel is not null)
@@ -189,7 +206,11 @@ public sealed class SiteSnapshotPlanner : ISiteSnapshotPlanner
                     SourceWire: DerivePowerSource(environment),
                     HasOpenAlarm: openAlarms.Count > 0,
                     AnomalyNote: DescribeIssue(openAlarms),
-                    ObservedAtUtc: observedAt));
+                    ObservedAtUtc: observedAt,
+
+                    // Derived here, in the pure planner, from this reading and the one before it —
+                    // not in the executor, which has a database and would be untestable without one.
+                    Anomalies: SnapshotAnomalyDetector.Detect(snapshot, previous, anomalyOptions, calibration)));
             }
         }
     }

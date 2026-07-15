@@ -1,3 +1,5 @@
+using Application.Abstractions.Pipeline;
+using Modules.Network.Domain.Ingestion;
 using SharedKernel;
 
 namespace Modules.Network.Application.Ingestion.Stage4_Persist;
@@ -19,7 +21,17 @@ public interface IEnergySyncExecutor
         CancellationToken cancellationToken = default);
 }
 
-public sealed record EnergySyncResult(int SitesCreated, int SitesUpdated, int TelemetryRowsAppended);
+public sealed record EnergySyncResult(
+    int SitesCreated,
+    int SitesUpdated,
+    int TelemetryRowsAppended,
+    int AnomaliesCreated = 0,
+    int AnomaliesUpdated = 0,
+    int AnomaliesResolved = 0,
+    IReadOnlyList<SyncChange>? Changes = null)
+{
+    public IReadOnlyList<SyncChange> Changes { get; init; } = Changes ?? [];
+}
 
 /// <summary>
 /// Primitive request envelope — all wire types, so the cross-module surface stays free of
@@ -35,4 +47,14 @@ public sealed record EnergySyncRequest(
     string SourceWire,
     bool HasOpenAlarm,
     string? AnomalyNote,
-    DateTime ObservedAtUtc);
+    DateTime ObservedAtUtc,
+
+    /// <summary>
+    /// Energy anomalies the Stage-3 planner derived from this snapshot (and the one before it).
+    /// Detection is done there, not here, so it stays pure and testable; Energy owns only the
+    /// create/update/close decision against what is already stored.
+    /// </summary>
+    IReadOnlyList<DetectedEnergyAnomaly>? Anomalies = null)
+{
+    public IReadOnlyList<DetectedEnergyAnomaly> Anomalies { get; init; } = Anomalies ?? [];
+}

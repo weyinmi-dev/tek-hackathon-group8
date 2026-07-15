@@ -461,7 +461,7 @@ static ServiceProvider BuildProvider(string connectionString)
     services.AddDbContext<AnalyticsDbContext>(o => o.UseNpgsql(connectionString));
 
     services.AddApplication();
-    services.AddNetworkApplication();
+    services.AddNetworkApplication(new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build());
     services.AddAlertsApplication();
     services.AddAnalyticsApplication();
 

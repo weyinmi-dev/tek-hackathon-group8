@@ -52,7 +52,32 @@ internal sealed class CreateOrUpdateAlertCommandHandler(
             return Result.Success(new CreateOrUpdateAlertResult(existing.Id, WasCreated: false));
         }
 
-        // 3. No live alert with this fingerprint — create a new one.
+        // 3. No LIVE alert — but there may be a RESOLVED one with this fingerprint. The alert's Code is
+        //    derived from the fingerprint and is uniquely indexed, so inserting a "new" alert here
+        //    would collide with the resolved one's code and fail the whole ingestion run. This is
+        //    exactly what happens when an OSS alarm clears and is later reported again: the alarm id
+        //    is stable, so the fingerprint is too.
+        //
+        //    Reopen it. That is both the only thing the schema permits and the truthful model — the
+        //    same alarm coming back is a recurrence, not a different incident.
+        Alert? resolved = await alerts.GetByFingerprintAsync(request.AnomalyFingerprint, cancellationToken);
+        if (resolved is not null)
+        {
+            resolved.Reopen(request.Severity, request.Confidence, request.AiCause, request.DetectedAtUtc);
+            await unitOfWork.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation(
+                "Alert {AlertId} ({Code}) reopened — fingerprint {Fingerprint} was reported again after being resolved",
+                resolved.Id, resolved.Code, request.AnomalyFingerprint);
+
+            // Announced as a new alarm: the condition is live again and deserves an investigation,
+            // which a silent recurrence bump would not trigger.
+            await PublishAlarmReceivedAsync(resolved.Id, resolved.Code, request, cancellationToken);
+
+            return Result.Success(new CreateOrUpdateAlertResult(resolved.Id, WasCreated: true));
+        }
+
+        // 4. Genuinely new — create it.
         string code = BuildCode(request.AnomalyFingerprint);
         var alert = Alert.RaiseFromAnomaly(
             code: code,
@@ -73,15 +98,23 @@ internal sealed class CreateOrUpdateAlertCommandHandler(
             "Alert {AlertId} ({Code}) raised from anomaly fingerprint {Fingerprint}",
             alert.Id, alert.Code, request.AnomalyFingerprint);
 
-        // Announce the new alarm. Published only here, on the create path — a recurrence is the same
-        // alarm firing again and must not re-open an investigation. Subscribers (currently the AI
-        // module's IncidentInvestigationWorkflow) react on their own; Alerts does not know they exist,
-        // and nothing downstream of this line can change the alert or optimization counts.
-        await eventBus.PublishAsync(
+        // Announce the new alarm. Published on the create and reopen paths only — an ordinary
+        // recurrence is the same alarm still firing and must not re-open an investigation.
+        // Subscribers (currently the AI module's IncidentInvestigationWorkflow) react on their own;
+        // Alerts does not know they exist, and nothing downstream of this line can change the alert
+        // or optimization counts.
+        await PublishAlarmReceivedAsync(alert.Id, alert.Code, request, cancellationToken);
+
+        return Result.Success(new CreateOrUpdateAlertResult(alert.Id, WasCreated: true));
+    }
+
+    private Task PublishAlarmReceivedAsync(
+        Guid alertId, string code, CreateOrUpdateAlertCommand request, CancellationToken cancellationToken) =>
+        eventBus.PublishAsync(
             new AlarmReceived(
                 Id: Guid.NewGuid(),
-                AlertId: alert.Id,
-                Code: alert.Code,
+                AlertId: alertId,
+                Code: code,
                 Severity: request.Severity.ToString(),
                 TowerCode: request.TowerCode,
                 Region: request.Region,
@@ -90,9 +123,6 @@ internal sealed class CreateOrUpdateAlertCommandHandler(
                 Confidence: request.Confidence,
                 DetectedAtUtc: request.DetectedAtUtc),
             cancellationToken);
-
-        return Result.Success(new CreateOrUpdateAlertResult(alert.Id, WasCreated: true));
-    }
 
     /// <summary>
     /// Stable, prefix-truncated code derived from the anomaly fingerprint. Keeps the

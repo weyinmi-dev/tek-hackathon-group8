@@ -1,3 +1,4 @@
+using Application.Abstractions.Pipeline;
 using FluentAssertions;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using Modules.Network.Domain.Ingestion;
@@ -13,7 +14,7 @@ public sealed class NetworkLogParserRegistryTests
     private readonly NetworkLogParserRegistry _registry = new(
     [
         new CsvNetworkLogParser(),
-        new JsonNetworkLogParser(),
+        new JsonNetworkLogParser(new SnapshotCalibrationOptions()),
         new XlsxNetworkLogParser(),
         new TxtNetworkLogParser()
     ]);

@@ -48,7 +48,9 @@ public sealed record SiteTelemetryPoint(
     double? PrbUtilization,
     int OpenAlarmCount);
 
-internal sealed class GetSiteTelemetryQueryHandler(IIngestionRunRepository runs)
+internal sealed class GetSiteTelemetryQueryHandler(
+    IIngestionRunRepository runs,
+    SnapshotCalibrationOptions calibration)
     : IQueryHandler<GetSiteTelemetryQuery, SiteTelemetry>
 {
     /// <summary>
@@ -78,13 +80,14 @@ internal sealed class GetSiteTelemetryQueryHandler(IIngestionRunRepository runs)
                 continue;
             }
 
-            points.Add(ToPoint(record, payload));
+            points.Add(ToPoint(record, payload, calibration));
         }
 
         return Result.Success(new SiteTelemetry(code, hours, points));
     }
 
-    private static SiteTelemetryPoint ToPoint(SiteSnapshotRecord record, SiteSnapshotPayload payload)
+    private static SiteTelemetryPoint ToPoint(
+        SiteSnapshotRecord record, SiteSnapshotPayload payload, SnapshotCalibrationOptions calibration)
     {
         SnapshotPerformanceMetrics? perf = payload.Performance;
         SnapshotEnvironmentalMetrics? env = payload.Environmental;
@@ -92,12 +95,12 @@ internal sealed class GetSiteTelemetryQueryHandler(IIngestionRunRepository runs)
         return new SiteTelemetryPoint(
             At: record.CapturedAt ?? record.GeneratedAt,
             HealthScore: payload.Site.HealthScore,
-            SignalPct: SnapshotDerivations.SignalPctFromRsrp(SnapshotDerivations.Kpi(perf?.Kpis, "RSRP")),
+            SignalPct: SnapshotDerivations.SignalPctFromRsrp(SnapshotDerivations.Kpi(perf?.Kpis, "RSRP"), calibration),
             LoadPct: perf?.CellUtilizationPercent,
             LatencyMs: perf?.LatencyMs,
             TemperatureC: env?.Temperature,
             HumidityPct: env?.Humidity,
-            BatteryPct: SnapshotDerivations.BatteryPctFromVoltage(env?.BatteryVoltage),
+            BatteryPct: SnapshotDerivations.BatteryPctFromVoltage(env?.BatteryVoltage, calibration),
             DieselPct: env?.GeneratorFuelPercent,
             GridUp: env?.MainPowerAvailable,
             DownlinkTrafficGb: perf?.DownlinkTrafficGb,

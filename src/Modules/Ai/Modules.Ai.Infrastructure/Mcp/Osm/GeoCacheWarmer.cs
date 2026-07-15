@@ -31,11 +31,33 @@ internal sealed class GeoCacheWarmer(
     private static readonly TimeSpan StartupDelay = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan PerSiteTimeout = TimeSpan.FromSeconds(90);
 
+    /// <summary>
+    /// How often the warmer re-sweeps. It used to run once at boot, which was fine when the tower set
+    /// was fixed at seed time — but sites now arrive at runtime from OSS snapshot uploads, and those
+    /// would have had no geo until the next deploy. Geo is read from cache on every list endpoint, so
+    /// a site the warmer has never seen simply renders without it; re-sweeping closes that gap.
+    ///
+    /// Six hours against a 24h cache TTL: frequent enough that a new site is enriched the same day,
+    /// infrequent enough that we are not a nuisance to public Overpass.
+    /// </summary>
+    private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(6);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try { await Task.Delay(StartupDelay, stoppingToken); }
         catch (OperationCanceledException) { return; }
 
+        while (!stoppingToken.IsCancellationRequested)
+        {
+            await WarmOnceAsync(stoppingToken);
+
+            try { await Task.Delay(SweepInterval, stoppingToken); }
+            catch (OperationCanceledException) { return; }
+        }
+    }
+
+    private async Task WarmOnceAsync(CancellationToken stoppingToken)
+    {
         await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
         INetworkApi network = scope.ServiceProvider.GetRequiredService<INetworkApi>();
         ISiteGeoLookup geo = scope.ServiceProvider.GetRequiredService<ISiteGeoLookup>();
@@ -72,7 +94,7 @@ internal sealed class GeoCacheWarmer(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
             catch (OperationCanceledException)
             {
-                logger.LogInformation("GeoCacheWarmer hit per-site timeout for {Code}; will retry on next deploy.", tower.Code);
+                logger.LogInformation("GeoCacheWarmer hit per-site timeout for {Code}; will retry on the next sweep.", tower.Code);
                 failed++;
             }
             catch (Exception ex)

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { observer } from "mobx-react-lite";
+import { SkeletonRows } from "@/components/Skeleton";
 import { TopBar } from "@/components/TopBar";
 import { Btn, Card, Pill, Section } from "@/components/UI";
 import { GeoBadge } from "@/components/GeoBadge";
@@ -160,9 +161,7 @@ const AlertsPage = observer(function AlertsPage() {
             </div>
           )}
           {!store.error && store.loading && store.alerts.length === 0 && (
-            <div className="mono" style={{ color: "var(--ink-3)", padding: 14, fontSize: 11.5 }}>
-              ⌁ Loading alerts…
-            </div>
+            <SkeletonRows rows={6} />
           )}
           {!store.error && !store.loading && store.visible.length === 0 && (
             <div className="mono" style={{ color: "var(--ink-3)", padding: 14, fontSize: 11.5 }}>

@@ -1,53 +1,52 @@
 namespace Application.Abstractions.Pipeline;
 
 /// <summary>
-/// Pure conversions from OSS-reported physical measurements to the normalised units the
-/// existing aggregates already speak (percentages, statuses). Kept in one place, free of
-/// any dependency, so both the Stage-1 parser and the Stage-3 planner derive identically
-/// and every mapping is unit-testable in isolation.
+/// Pure conversions from OSS-reported physical measurements to the normalised units the existing
+/// aggregates already speak (percentages, statuses). Kept in one place, free of any dependency, so
+/// every caller derives identically and every mapping is unit-testable in isolation.
 ///
-/// Every constant here is a documented modelling choice, not a fact from the feed. When a
-/// vendor eventually reports one of these directly, prefer the reported value and delete
-/// the derivation rather than blending the two.
+/// Nothing here carries a constant of its own. Every window and threshold arrives as
+/// <see cref="SnapshotCalibrationOptions"/>, bound from configuration and validated at startup —
+/// these are characteristics of a fleet's hardware and a network's planning, not universal truths,
+/// and a 48 V window silently applied to a 24 V bank would report every healthy battery as flat.
 /// </summary>
 public static class SnapshotDerivations
 {
-    // RSRP is reported in dBm and is the standard RAN proxy for downlink signal quality.
-    // The usable window in LTE/NR planning runs from roughly -120 dBm (cell edge, unusable)
-    // to -70 dBm (excellent, close to the radio). Map that window linearly onto 0..100 and
-    // clamp outside it. -91 dBm — the value in MTN's reference payload — lands at 58%.
-    private const double RsrpFloorDbm = -120.0;
-    private const double RsrpCeilingDbm = -70.0;
-
-    // A 48 V telecom battery string sits near 54 V on float charge and is treated as fully
-    // discharged at its 42 V low-voltage cutoff; below that the rectifier drops the load.
-    private const double BatteryFloorVolts = 42.0;
-    private const double BatteryCeilingVolts = 54.0;
-
     /// <summary>
-    /// Downlink signal quality as a percentage, from RSRP in dBm. Returns null when the
-    /// snapshot carried no RSRP KPI — the caller must not substitute a fabricated value.
+    /// Downlink signal quality as a percentage, from RSRP in dBm, mapped linearly across the
+    /// configured planning window and clamped outside it. Returns null when the snapshot carried no
+    /// RSRP KPI — the caller must not substitute a fabricated value.
     /// </summary>
-    public static int? SignalPctFromRsrp(double? rsrpDbm)
+    public static int? SignalPctFromRsrp(double? rsrpDbm, SnapshotCalibrationOptions calibration)
     {
+        ArgumentNullException.ThrowIfNull(calibration);
+
         if (rsrpDbm is not double rsrp)
         {
             return null;
         }
 
-        double normalised = (rsrp - RsrpFloorDbm) / (RsrpCeilingDbm - RsrpFloorDbm) * 100.0;
-        return (int)Math.Round(Math.Clamp(normalised, 0.0, 100.0));
+        RsrpCalibration window = calibration.Rsrp;
+        return Interpolate(rsrp, window.FloorDbm, window.CeilingDbm);
     }
 
-    /// <summary>State of charge as a percentage, from the DC bus voltage of a 48 V string.</summary>
-    public static int? BatteryPctFromVoltage(double? volts)
+    /// <summary>State of charge as a percentage, from the DC bus voltage of the configured string.</summary>
+    public static int? BatteryPctFromVoltage(double? volts, SnapshotCalibrationOptions calibration)
     {
+        ArgumentNullException.ThrowIfNull(calibration);
+
         if (volts is not double v)
         {
             return null;
         }
 
-        double normalised = (v - BatteryFloorVolts) / (BatteryCeilingVolts - BatteryFloorVolts) * 100.0;
+        BatteryCalibration window = calibration.Battery;
+        return Interpolate(v, window.FloorVolts, window.CeilingVolts);
+    }
+
+    private static int Interpolate(double value, double atZero, double atHundred)
+    {
+        double normalised = (value - atZero) / (atHundred - atZero) * 100.0;
         return (int)Math.Round(Math.Clamp(normalised, 0.0, 100.0));
     }
 
@@ -74,14 +73,18 @@ public static class SnapshotDerivations
     }
 
     /// <summary>
-    /// Wire-level tower status ("CRITICAL" / "WARN" / "OK") for a snapshot, from the site's
-    /// own health score and the severity of the alarms it is currently reporting. An active
-    /// Critical alarm outranks a flattering health score — a site on generator with a failed
-    /// grid feed is not "Operational" no matter what number the OSS attaches to it.
+    /// Wire-level tower status ("CRITICAL" / "WARN" / "OK") for a snapshot, from the site's own health
+    /// score and the severity of the alarms it is currently reporting. An active Critical alarm
+    /// outranks a flattering health score — a site on generator with a failed grid feed is not
+    /// "Operational" no matter what number the OSS attaches to it.
     /// </summary>
-    public static string TowerStatusFrom(int? healthScore, IReadOnlyList<SnapshotAlarm> alarms)
+    public static string TowerStatusFrom(
+        int? healthScore,
+        IReadOnlyList<SnapshotAlarm> alarms,
+        SnapshotCalibrationOptions calibration)
     {
         ArgumentNullException.ThrowIfNull(alarms);
+        ArgumentNullException.ThrowIfNull(calibration);
 
         bool hasCritical = alarms.Any(a =>
             IsOpen(a) && string.Equals(a.Severity, "Critical", StringComparison.OrdinalIgnoreCase));
@@ -100,17 +103,24 @@ public static class SnapshotDerivations
             return "WARN";
         }
 
-        return healthScore switch
+        if (healthScore is not int score)
         {
-            < 50 => "CRITICAL",
-            < 80 => "WARN",
-            _ => "OK"
-        };
+            return "OK";
+        }
+
+        HealthScoreCalibration thresholds = calibration.HealthScore;
+
+        if (score < thresholds.CriticalBelow)
+        {
+            return "CRITICAL";
+        }
+
+        return score < thresholds.WarnBelow ? "WARN" : "OK";
     }
 
     /// <summary>
-    /// An alarm still counts against the site unless it has been explicitly cleared or
-    /// resolved upstream. "Acknowledged" means someone has seen it, not that it is gone.
+    /// An alarm still counts against the site unless it has been explicitly cleared or resolved
+    /// upstream. "Acknowledged" means someone has seen it, not that it is gone.
     /// </summary>
     public static bool IsOpen(SnapshotAlarm alarm)
     {

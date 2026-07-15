@@ -4,6 +4,7 @@ using Modules.Alerts.Application.Pipeline;
 using Modules.Alerts.Domain;
 using Modules.Alerts.Domain.Alerts;
 using Modules.Network.Application.Ingestion.Stage4_Persist;
+using Modules.Network.Domain.Ingestion;
 using SharedKernel;
 
 namespace Modules.Alerts.Infrastructure.Pipeline;
@@ -31,11 +32,12 @@ internal sealed class AlertActionExecutor(
     /// NetworkDbContext, so a resolve left uncommitted here would be silently dropped — the same
     /// reason <c>CreateOrUpdateAlertCommandHandler</c> saves its own context on the create path.
     /// </summary>
-    public async Task<Result<int>> ResolveAsync(
+    public async Task<Result<AlertResolutionsResult>> ResolveAsync(
         IReadOnlyList<AlertResolutionRequest> resolutions,
         CancellationToken cancellationToken = default)
     {
         int resolved = 0;
+        var changes = new List<SyncChange>();
 
         foreach (AlertResolutionRequest resolution in resolutions)
         {
@@ -54,6 +56,10 @@ internal sealed class AlertActionExecutor(
             if (alert.Resolve(resolution.Reason, DateTime.UtcNow))
             {
                 resolved++;
+                changes.Add(new SyncChange(
+                    "Alert", alert.Code, SyncAction.Archived, alert.TowerCode,
+                    $"Resolved — {resolution.Reason}"));
+
                 logger.LogInformation(
                     "Alert {AlertCode} resolved — {Reason}", alert.Code, resolution.Reason);
             }
@@ -64,7 +70,7 @@ internal sealed class AlertActionExecutor(
             await unitOfWork.SaveChangesAsync(cancellationToken);
         }
 
-        return Result.Success(resolved);
+        return Result.Success(new AlertResolutionsResult(resolved, changes));
     }
 
     public async Task<Result<AlertActionsResult>> ExecuteAsync(
@@ -73,6 +79,7 @@ internal sealed class AlertActionExecutor(
     {
         int created = 0;
         int updated = 0;
+        var changes = new List<SyncChange>();
 
         foreach (AlertActionRequest request in requests)
         {
@@ -102,10 +109,21 @@ internal sealed class AlertActionExecutor(
 
             if (result.Value.WasCreated) created++;
             else updated++;
+
+            changes.Add(new SyncChange(
+                EntityType: "Alert",
+                EntityKey: $"AL-{Truncate(request.AnomalyFingerprint)}",
+                Action: result.Value.WasCreated ? SyncAction.Created : SyncAction.Updated,
+                SiteCode: request.TowerCode,
+                Detail: $"{request.SeverityWire} — {request.Title}"));
         }
 
-        return Result.Success(new AlertActionsResult(created, updated));
+        return Result.Success(new AlertActionsResult(created, updated, changes));
     }
+
+    /// <summary>Mirrors the Code the command handler builds, so the report names the row the operator will see.</summary>
+    private static string Truncate(string fingerprint) =>
+        fingerprint.Length >= 24 ? fingerprint[..24] : fingerprint;
 
     private static AlertSeverity ParseSeverity(string wire) => wire?.ToUpperInvariant() switch
     {

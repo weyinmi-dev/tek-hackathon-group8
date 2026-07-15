@@ -24,6 +24,15 @@ internal sealed class AnomalyEventRepository(EnergyDbContext db) : IAnomalyEvent
             .OrderByDescending(a => a.DetectedAtUtc)
             .ToListAsync(ct);
 
+    // Tracked, and includes acknowledged rows: the caller reopens conditions that returned and closes
+    // ones that cleared. Scoped to snapshot-detected rows so synchronisation never touches an anomaly
+    // the ML detector or the seeder owns.
+    public async Task<IReadOnlyList<AnomalyEvent>> ListSnapshotDetectedForUpdateAsync(
+        string siteCode, CancellationToken ct = default) =>
+        await db.Anomalies
+            .Where(a => a.SiteCode == siteCode.Trim().ToUpper() && a.DetectionKey != null)
+            .ToListAsync(ct);
+
     public Task<int> CountAsync(AnomalySeverity? minSeverity, bool openOnly, CancellationToken ct = default)
     {
         IQueryable<AnomalyEvent> q = db.Anomalies.AsNoTracking();

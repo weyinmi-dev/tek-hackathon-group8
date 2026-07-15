@@ -378,6 +378,7 @@ export type IngestionRunSummary = {
   recordsArchived: number;
   telemetryRowsAppended: number;
   warnings: string[];
+  changes: SyncChange[];
   syncedSites: SyncedSite[];
 
   // File-index metadata. Nullable because a run that failed before it was persisted has none.
@@ -386,6 +387,23 @@ export type IngestionRunSummary = {
   startedAt: string | null;
   completedAt: string | null;
   durationMs: number | null;
+};
+
+/**
+ * One record an upload touched. The counts say how many; these say which — the question an operator
+ * actually asks when a sync does something unexpected.
+ *
+ * The API serialises the enum as its name, not its ordinal (the Web.Api pipeline is configured with
+ * a string enum converter), so this is a string union rather than 0 | 1 | 2.
+ */
+export type SyncAction = "Created" | "Updated" | "Archived";
+
+export type SyncChange = {
+  entityType: string;
+  entityKey: string;
+  action: SyncAction;
+  siteCode: string | null;
+  detail: string | null;
 };
 
 /** One site an upload touched — the provenance row the FILES tab renders. */

@@ -66,7 +66,28 @@ internal sealed class DecidePipelineActionsCommandHandler(
                 payloads.Add(payload);
             }
 
-            actions.AddRange(snapshotPlanner.Plan(payloads, activeAlerts, currentTowers));
+            // The reading immediately before each of these, per site. The anomaly rules that matter
+            // are about change — fuel that fell while the generator was off is theft, and a single
+            // reading cannot show that. Loaded here and passed in so the planner stays pure.
+            var previousBySite = new Dictionary<string, SiteSnapshotPayload>(StringComparer.OrdinalIgnoreCase);
+            foreach (SiteSnapshotRecord record in snapshots)
+            {
+                SiteSnapshotRecord? prior = await runs.GetPreviousSnapshotForSiteAsync(
+                    record.SiteCode, record.CapturedAt ?? record.GeneratedAt, cancellationToken);
+
+                if (prior is null)
+                {
+                    continue;
+                }
+
+                SiteSnapshotPayload? priorPayload = SiteSnapshotPayload.Deserialize(prior.RawJson);
+                if (priorPayload is not null)
+                {
+                    previousBySite[record.SiteCode] = priorPayload;
+                }
+            }
+
+            actions.AddRange(snapshotPlanner.Plan(payloads, activeAlerts, currentTowers, previousBySite));
         }
 
         logger.LogInformation(

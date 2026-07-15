@@ -404,11 +404,11 @@ public sealed class ApplyPipelineActionsCommandHandlerTests
             IReadOnlyList<AlertActionRequest> requests, CancellationToken _ = default) =>
             Task.FromResult(respond(requests));
 
-        public Task<Result<int>> ResolveAsync(
+        public Task<Result<AlertResolutionsResult>> ResolveAsync(
             IReadOnlyList<AlertResolutionRequest> resolutions, CancellationToken _ = default)
         {
             Resolutions.AddRange(resolutions);
-            return Task.FromResult(Result.Success(resolutions.Count));
+            return Task.FromResult(Result.Success(new AlertResolutionsResult(resolutions.Count)));
         }
     }
 

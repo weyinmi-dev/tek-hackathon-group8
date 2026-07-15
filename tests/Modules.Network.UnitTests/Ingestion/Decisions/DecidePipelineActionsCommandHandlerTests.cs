@@ -111,7 +111,7 @@ public sealed class DecidePipelineActionsCommandHandlerTests
         new(
             new FakeIngestionRunRepository(run),
             new DefaultDecisionEngine(new DecisionEngineOptions()),
-            new SiteSnapshotPlanner(),
+            new SiteSnapshotPlanner(new SnapshotAnomalyOptions(), new SnapshotCalibrationOptions()),
             new FakeAlertSnapshotProvider(activeAlerts ?? []),
             new FakeTowerSnapshotProvider(towers ?? Towers()),
             NullLogger<DecidePipelineActionsCommandHandler>.Instance);

@@ -16,6 +16,12 @@ internal sealed class AnomalyEventConfiguration : IEntityTypeConfiguration<Anoma
         builder.Property(a => a.Detail).HasMaxLength(512).IsRequired();
         builder.Property(a => a.ModelName).HasMaxLength(64).IsRequired();
         builder.Property(a => a.AcknowledgedBy).HasMaxLength(64);
+
+        // Nullable and NOT unique: seeded and ML-detected rows carry no key, and a condition that
+        // clears and later returns keeps the same key across both the closed and reopened row.
+        builder.Property(a => a.DetectionKey).HasMaxLength(128);
+        builder.HasIndex(a => a.DetectionKey);
+
         builder.HasIndex(a => a.SiteCode);
         builder.HasIndex(a => new { a.DetectedAtUtc, a.Acknowledged });
         builder.Ignore(a => a.DomainEvents);

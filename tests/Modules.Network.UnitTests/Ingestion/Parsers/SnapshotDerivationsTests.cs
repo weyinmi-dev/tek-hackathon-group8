@@ -11,6 +11,7 @@ namespace Modules.Network.UnitTests.Ingestion.Parsers;
 /// </summary>
 public sealed class SnapshotDerivationsTests
 {
+    private static readonly SnapshotCalibrationOptions Calibration = new();
     [Theory]
     [InlineData(-120, 0)]    // cell edge, unusable
     [InlineData(-110, 20)]
@@ -21,11 +22,11 @@ public sealed class SnapshotDerivationsTests
     [InlineData(-130, 0)]    // below the floor clamps, never goes negative
     [InlineData(-60, 100)]   // above the ceiling clamps, never exceeds 100
     public void SignalPctFromRsrp_MapsTheRanPlanningWindowLinearly(double rsrpDbm, int expected) =>
-        SnapshotDerivations.SignalPctFromRsrp(rsrpDbm).Should().Be(expected);
+        SnapshotDerivations.SignalPctFromRsrp(rsrpDbm, Calibration).Should().Be(expected);
 
     [Fact]
     public void SignalPctFromRsrp_ReturnsNullWhenTheSnapshotCarriedNoRsrp() =>
-        SnapshotDerivations.SignalPctFromRsrp(null).Should().BeNull(
+        SnapshotDerivations.SignalPctFromRsrp(null, Calibration).Should().BeNull(
             "a missing measurement must stay missing — substituting a number would invent signal data");
 
     [Theory]
@@ -36,7 +37,7 @@ public sealed class SnapshotDerivationsTests
     [InlineData(30.0, 0)]     // clamped
     [InlineData(60.0, 100)]   // clamped
     public void BatteryPctFromVoltage_MapsThe48VStringWindow(double volts, int expected) =>
-        SnapshotDerivations.BatteryPctFromVoltage(volts).Should().Be(expected);
+        SnapshotDerivations.BatteryPctFromVoltage(volts, Calibration).Should().Be(expected);
 
     [Fact]
     public void TowerStatus_CriticalAlarmOutranksAHealthyScore()
@@ -46,7 +47,7 @@ public sealed class SnapshotDerivationsTests
             new("ALM-1", "Critical", "Power", "Grid Power Failure", "Active", null, null, null)
         ];
 
-        SnapshotDerivations.TowerStatusFrom(healthScore: 87, alarms).Should().Be("CRITICAL");
+        SnapshotDerivations.TowerStatusFrom(healthScore: 87, alarms, Calibration).Should().Be("CRITICAL");
     }
 
     [Fact]
@@ -58,7 +59,7 @@ public sealed class SnapshotDerivationsTests
             new("ALM-2", "Major", "Cooling", "High Temperature", "Acknowledged", null, null, null)
         ];
 
-        SnapshotDerivations.TowerStatusFrom(healthScore: 95, alarms).Should().Be("WARN");
+        SnapshotDerivations.TowerStatusFrom(healthScore: 95, alarms, Calibration).Should().Be("WARN");
     }
 
     [Fact]
@@ -69,7 +70,7 @@ public sealed class SnapshotDerivationsTests
             new("ALM-3", "Critical", "Power", "Grid Power Failure", "Cleared", null, null, null)
         ];
 
-        SnapshotDerivations.TowerStatusFrom(healthScore: 95, alarms).Should().Be("OK");
+        SnapshotDerivations.TowerStatusFrom(healthScore: 95, alarms, Calibration).Should().Be("OK");
     }
 
     [Theory]
@@ -79,7 +80,7 @@ public sealed class SnapshotDerivationsTests
     [InlineData(50, "WARN")]
     [InlineData(49, "CRITICAL")]
     public void TowerStatus_FallsBackToTheHealthScoreWhenNoAlarmsAreOpen(int healthScore, string expected) =>
-        SnapshotDerivations.TowerStatusFrom(healthScore, []).Should().Be(expected);
+        SnapshotDerivations.TowerStatusFrom(healthScore, [], Calibration).Should().Be(expected);
 
     [Fact]
     public void ReferencePayloadAlarms_ProduceCritical()
@@ -91,6 +92,6 @@ public sealed class SnapshotDerivationsTests
             new("ALM-100291", "Major", "Cooling", "High Temperature Warning", "Acknowledged", null, null, null)
         ];
 
-        SnapshotDerivations.TowerStatusFrom(healthScore: 87, alarms).Should().Be("CRITICAL");
+        SnapshotDerivations.TowerStatusFrom(healthScore: 87, alarms, Calibration).Should().Be("CRITICAL");
     }
 }

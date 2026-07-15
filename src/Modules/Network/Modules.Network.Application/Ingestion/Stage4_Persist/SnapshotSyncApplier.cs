@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Modules.Network.Application.Ingestion.Stage3_Decide;
 using Modules.Network.Domain.Assets;
+using Modules.Network.Domain.Ingestion;
 using Modules.Network.Domain.Maintenance;
 using Modules.Network.Domain.Towers;
 
@@ -88,6 +89,9 @@ internal sealed class SnapshotSyncApplier(
 
             await towers.AddAsync(created, ct);
             counts.TowersCreated++;
+            counts.Record(
+                "Tower", action.TowerCode, SyncAction.Created, action.TowerCode,
+                $"{action.Name} - {action.Region} - {action.StatusWire}");
 
             logger.LogInformation(
                 "Snapshot created tower {TowerCode} ({Region}) at {Latitude},{Longitude}",
@@ -115,6 +119,10 @@ internal sealed class SnapshotSyncApplier(
         if (identityChanged || metricsChanged)
         {
             counts.TowerUpdates++;
+            counts.Record(
+                "Tower", action.TowerCode, SyncAction.Updated, action.TowerCode,
+                $"{action.StatusWire} - signal {signal}% - load {load}%" +
+                (action.Issue is null ? string.Empty : $" - {action.Issue}"));
         }
     }
 
@@ -136,6 +144,9 @@ internal sealed class SnapshotSyncApplier(
                 if (unit.Observe(report.Type, report.Model, report.Status, action.ObservedAtUtc))
                 {
                     counts.EquipmentUpdated++;
+                    counts.Record(
+                        "Equipment", report.EquipmentId, SyncAction.Updated, action.SiteCode,
+                        $"{report.Type} - {report.Status ?? "reported"}");
                 }
                 continue;
             }
@@ -146,6 +157,9 @@ internal sealed class SnapshotSyncApplier(
                     action.ObservedAtUtc),
                 ct);
             counts.EquipmentCreated++;
+            counts.Record(
+                "Equipment", report.EquipmentId, SyncAction.Created, action.SiteCode,
+                $"{report.Type}{(report.Model is null ? string.Empty : $" - {report.Model}")}");
         }
 
         // Anything installed at this site that the latest snapshot no longer lists has been
@@ -155,6 +169,10 @@ internal sealed class SnapshotSyncApplier(
             if (!reportedIds.Contains(unit.EquipmentId) && unit.Retire(action.ObservedAtUtc))
             {
                 counts.EquipmentRetired++;
+                counts.Record(
+                    "Equipment", unit.EquipmentId, SyncAction.Archived, action.SiteCode,
+                    "Retired - absent from the latest snapshot.");
+
                 logger.LogInformation(
                     "Equipment {EquipmentId} retired at {SiteCode} — absent from the latest snapshot",
                     unit.EquipmentId, action.SiteCode);
@@ -179,7 +197,8 @@ internal sealed class SnapshotSyncApplier(
             // Register the assigned engineer first — but only when the feed gave a real id.
             if (!string.IsNullOrWhiteSpace(report.EngineerId) && !string.IsNullOrWhiteSpace(report.EngineerName))
             {
-                await UpsertEngineerAsync(report.EngineerId, report.EngineerName, action.ObservedAtUtc, counts, ct);
+                await UpsertEngineerAsync(
+                    report.EngineerId, report.EngineerName, action.ObservedAtUtc, counts, action.SiteCode, ct);
             }
 
             if (byId.TryGetValue(report.TicketId, out MaintenanceTicket? ticket))
@@ -189,6 +208,9 @@ internal sealed class SnapshotSyncApplier(
                         report.EngineerId, report.EngineerName, report.EstimatedArrival, action.ObservedAtUtc))
                 {
                     counts.TicketsUpdated++;
+                    counts.Record(
+                        "Maintenance Ticket", report.TicketId, SyncAction.Updated, action.SiteCode,
+                        $"{report.ProviderStatus ?? "Open"} - {report.Issue ?? "no detail"}");
                 }
                 continue;
             }
@@ -200,6 +222,10 @@ internal sealed class SnapshotSyncApplier(
                     action.ObservedAtUtc),
                 ct);
             counts.TicketsCreated++;
+            counts.Record(
+                "Maintenance Ticket", report.TicketId, SyncAction.Created, action.SiteCode,
+                $"{report.Priority ?? "Open"} - {report.Issue ?? "no detail"}" +
+                (report.EngineerName is null ? string.Empty : $" - {report.EngineerName}"));
         }
 
         // ── Completed work ──────────────────────────────────────────────────────
@@ -213,7 +239,15 @@ internal sealed class SnapshotSyncApplier(
             {
                 if (ticket.Complete(report.CompletedAt, report.EngineerName, report.Action, action.ObservedAtUtc))
                 {
+                    // A ticket we already had, now closed: that is an update to an existing record.
+                    // TicketsCompleted is reported separately for colour, but the totals must count
+                    // this exactly once — it was previously counted in neither.
                     counts.TicketsCompleted++;
+                    counts.TicketsUpdated++;
+                    counts.Record(
+                        "Maintenance Ticket", report.TicketId, SyncAction.Updated, action.SiteCode,
+                        $"Completed - {report.Action ?? "no action recorded"}" +
+                        (report.EngineerName is null ? string.Empty : $" - {report.EngineerName}"));
                 }
                 continue;
             }
@@ -227,7 +261,14 @@ internal sealed class SnapshotSyncApplier(
 
             backfilled.Complete(report.CompletedAt, report.EngineerName, report.Action, action.ObservedAtUtc);
             await tickets.AddAsync(backfilled, ct);
+
+            // A ticket raised and finished between two uploads. It is a new row, so it counts as
+            // created — counting it only as "completed" left it out of the totals entirely.
             counts.TicketsCompleted++;
+            counts.TicketsCreated++;
+            counts.Record(
+                "Maintenance Ticket", report.TicketId, SyncAction.Created, action.SiteCode,
+                $"Completed before we first saw it - {report.Action ?? "no action recorded"}");
         }
 
         // ── Fallen out of the feed ──────────────────────────────────────────────
@@ -238,6 +279,10 @@ internal sealed class SnapshotSyncApplier(
             if (!reportedIds.Contains(ticket.TicketId) && ticket.Archive(action.ObservedAtUtc))
             {
                 counts.TicketsArchived++;
+                counts.Record(
+                    "Maintenance Ticket", ticket.TicketId, SyncAction.Archived, action.SiteCode,
+                    "Archived - no longer reported as open or completed.");
+
                 logger.LogInformation(
                     "Ticket {TicketId} archived at {SiteCode} — no longer reported as open or completed",
                     ticket.TicketId, action.SiteCode);
@@ -246,7 +291,8 @@ internal sealed class SnapshotSyncApplier(
     }
 
     private async Task UpsertEngineerAsync(
-        string engineerId, string name, DateTime observedAt, SnapshotSyncCounts counts, CancellationToken ct)
+        string engineerId, string name, DateTime observedAt, SnapshotSyncCounts counts,
+        string siteCode, CancellationToken ct)
     {
         Engineer? existing = await engineers.GetByEngineerIdAsync(engineerId, ct);
 
@@ -254,12 +300,14 @@ internal sealed class SnapshotSyncApplier(
         {
             await engineers.AddAsync(Engineer.Register(engineerId, name, observedAt), ct);
             counts.EngineersCreated++;
+            counts.Record("Engineer", engineerId, SyncAction.Created, siteCode, name);
             return;
         }
 
         if (existing.Observe(name, observedAt))
         {
             counts.EngineersUpdated++;
+            counts.Record("Engineer", engineerId, SyncAction.Updated, siteCode, name);
         }
     }
 
@@ -275,6 +323,14 @@ internal sealed class SnapshotSyncApplier(
 internal sealed class SnapshotSyncCounts
 {
     private readonly List<string> _warnings = [];
+    private readonly List<SyncChange> _changes = [];
+
+    /// <summary>Every record this run touched, itemised — what the sync report's table renders.</summary>
+    public IReadOnlyList<SyncChange> Changes => _changes;
+
+    public void Record(string entityType, string entityKey, SyncAction action, string? siteCode, string? detail) =>
+        _changes.Add(new SyncChange(entityType, entityKey, action, siteCode, detail));
+
 
     public int TowersCreated { get; set; }
     public int TowerUpdates { get; set; }

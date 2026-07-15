@@ -1,3 +1,4 @@
+using Application.Abstractions.Pipeline;
 using System.Text.Json;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using Modules.Network.Domain.Ingestion;
@@ -18,7 +19,7 @@ namespace Modules.Network.Infrastructure.Ingestion.Parsers;
 /// logs it does not understand.
 /// Field names in the row forms are matched case-insensitively against <see cref="NetworkLogColumns"/>.
 /// </summary>
-internal sealed class JsonNetworkLogParser : INetworkLogParser
+internal sealed class JsonNetworkLogParser(SnapshotCalibrationOptions calibration) : INetworkLogParser
 {
     private const string EnvelopeArrayProperty = "events";
 
@@ -61,7 +62,7 @@ internal sealed class JsonNetworkLogParser : INetworkLogParser
             // { "events": [...] } envelope keep their original path byte for byte.
             if (SiteSnapshotDecoder.IsSnapshotDocument(doc.RootElement))
             {
-                return SiteSnapshotDecoder.Decode(ingestionRunId, doc.RootElement);
+                return SiteSnapshotDecoder.Decode(ingestionRunId, doc.RootElement, calibration);
             }
 
             JsonElement rowsElement = doc.RootElement.ValueKind switch

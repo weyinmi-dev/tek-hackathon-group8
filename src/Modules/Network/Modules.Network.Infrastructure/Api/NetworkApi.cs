@@ -18,7 +18,10 @@ namespace Modules.Network.Infrastructure.Api;
 /// is written twice. Mapping to a separate shape here is the price of the module boundary: the Ai
 /// module may not reference Network.Application, and the architecture tests enforce it.
 /// </summary>
-internal sealed class NetworkApi(ITowerRepository towers, ISender sender) : INetworkApi
+internal sealed class NetworkApi(
+    ITowerRepository towers,
+    ISender sender,
+    SnapshotCalibrationOptions calibration) : INetworkApi
 {
     public async Task<IReadOnlyList<TowerSnapshot>> ListTowersAsync(CancellationToken ct = default)
     {
@@ -81,7 +84,7 @@ internal sealed class NetworkApi(ITowerRepository towers, ISender sender) : INet
             LastSynchronisedAt: d.LastSynchronisedAt,
             LastHeartbeat: d.LastHeartbeat,
             TemperatureC: env?.Temperature,
-            BatteryPct: SnapshotDerivations.BatteryPctFromVoltage(env?.BatteryVoltage),
+            BatteryPct: SnapshotDerivations.BatteryPctFromVoltage(env?.BatteryVoltage, calibration),
             GeneratorFuelPercent: env?.GeneratorFuelPercent,
             GridUp: env?.MainPowerAvailable,
             GeneratorRunning: env?.GeneratorRunning,

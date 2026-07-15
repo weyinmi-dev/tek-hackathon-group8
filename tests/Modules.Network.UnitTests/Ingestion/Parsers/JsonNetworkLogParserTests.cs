@@ -1,3 +1,4 @@
+using Application.Abstractions.Pipeline;
 using Modules.Network.Application.Ingestion.Stage1_Ingest;
 using FluentAssertions;
 using Modules.Network.Domain.Ingestion;
@@ -10,7 +11,7 @@ namespace Modules.Network.UnitTests.Ingestion.Parsers;
 
 public sealed class JsonNetworkLogParserTests
 {
-    private readonly JsonNetworkLogParser _parser = new();
+    private readonly JsonNetworkLogParser _parser = new(new SnapshotCalibrationOptions());
 
     [Theory]
     [InlineData("application/json", "ops.json", true)]

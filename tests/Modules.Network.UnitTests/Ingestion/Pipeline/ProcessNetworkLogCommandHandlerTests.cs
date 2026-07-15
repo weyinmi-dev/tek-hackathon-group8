@@ -236,6 +236,12 @@ public sealed class ProcessNetworkLogCommandHandlerTests
             return Task.CompletedTask;
         }
 
+        public override Task DeleteAsync(IngestionRun run, CancellationToken _ = default)
+        {
+            Runs.RemoveAll(r => r.Id == run.Id);
+            return Task.CompletedTask;
+        }
+
         public Task AddEventsAsync(IEnumerable<NetworkEvent> _, CancellationToken __ = default) => Task.CompletedTask;
 
         public Task<IReadOnlyList<NetworkEvent>> ListEventsAsync(Guid _, CancellationToken __ = default) =>

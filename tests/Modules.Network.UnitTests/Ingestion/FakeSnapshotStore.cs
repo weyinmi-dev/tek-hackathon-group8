@@ -19,6 +19,12 @@ internal abstract class FakeSnapshotStore
     /// so the base returns empty rather than reimplementing the cross-table filter; a test that cares
     /// about history should use the real repository against the in-memory context.
     /// </summary>
+    /// <summary>
+    /// Only the retry path deletes a run, and only the orchestrator tests exercise it — those
+    /// override this. Everything else gets a no-op rather than a fake store it never touches.
+    /// </summary>
+    public virtual Task DeleteAsync(IngestionRun run, CancellationToken _ = default) => Task.CompletedTask;
+
     public Task<IReadOnlyList<IngestionRun>> SearchRunsAsync(
         string? siteCode, string? provider, string? search, int skip, int take, CancellationToken _ = default) =>
         Task.FromResult<IReadOnlyList<IngestionRun>>([]);

@@ -9,7 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { isEngineer, isManager } from "@/lib/rbac";
 import { api } from "@/lib/api";
 import { useSyncStore } from "@/lib/stores/StoreProvider";
-import { downloadSampleTemplates } from "@/lib/sampleTemplates";
+import { downloadSampleTemplates, downloadSiteSnapshotTemplate } from "@/lib/sampleTemplates";
 import type {
   DocumentListItem,
   DocumentProvider,
@@ -152,9 +152,15 @@ export default function DocumentsPage() {
                 </Btn>
                 <Btn
                   onClick={() => downloadSampleTemplates()}
-                  title="Download a CSV + TXT sample with realistic events you can drop into the ingest modal."
+                  title="Download a CSV + TXT sample with realistic network events you can drop into the ingest modal."
                 >
-                  ↓ Sample template
+                  ↓ CSV/TXT sample
+                </Btn>
+                <Btn
+                  onClick={() => downloadSiteSnapshotTemplate()}
+                  title="Download a validated Site Snapshot .json (plus a field guide) — the full shape that syncs towers, energy, equipment, maintenance and alarms in one upload."
+                >
+                  ↓ Snapshot template
                 </Btn>
               </>
             )}

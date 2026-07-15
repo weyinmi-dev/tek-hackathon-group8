@@ -70,6 +70,21 @@ internal sealed class ProcessNetworkLogCommandHandler(
         IngestionRun run;
         try
         {
+            // A prior run for this content exists and did NOT complete, so we are about to retry it.
+            // ContentHash is uniquely indexed — one run per file content — so the failed row must be
+            // cleared first; inserting a second run for the same bytes violates the constraint and
+            // turns every retry of a failed file into a 500. Its events and snapshots cascade away
+            // with it, which is what we want: they are the partial output of a run that failed.
+            if (prior is not null)
+            {
+                logger.LogInformation(
+                    "Replacing failed run {PriorRunId} for content hash {ContentHash} — retrying",
+                    prior.Id, contentHash);
+
+                await runs.DeleteAsync(prior, cancellationToken);
+                await unitOfWork.SaveChangesAsync(cancellationToken);
+            }
+
             run = IngestionRun.Start(
                 contentHash: contentHash,
                 fileName: request.FileName,
@@ -190,7 +205,11 @@ internal sealed class ProcessNetworkLogCommandHandler(
                     RecordsUpdated: counts.TotalUpdated,
                     RecordsArchived: counts.TotalArchived,
                     TelemetryRowsAppended: counts.TelemetryRowsAppended,
-                    Warnings: counts.Warnings),
+                    Warnings: counts.Warnings,
+
+                    // The de-duplicated list, not the raw one: the run must store exactly the rows the
+                    // report renders, so the headline counts and the table can never disagree.
+                    Changes: counts.RecordedChanges),
                 completedAt: DateTimeOffset.UtcNow);
 
             await unitOfWork.SaveChangesAsync(cancellationToken);
@@ -329,6 +348,7 @@ internal sealed class ProcessNetworkLogCommandHandler(
             RecordsArchived: run.RecordsArchived,
             TelemetryRowsAppended: run.TelemetryRowsAppended,
             Warnings: SplitWarnings(run.Warnings),
+            Changes: run.Changes,
             SyncedSites: (snapshots ?? []).Select(ToSyncedSite).ToList(),
             FileName: run.FileName,
             SubmittedBy: run.SubmittedBy,

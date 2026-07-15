@@ -17,6 +17,14 @@ internal sealed class IngestionRunRepository(NetworkDbContext db) : IIngestionRu
     public async Task AddAsync(IngestionRun run, CancellationToken cancellationToken = default) =>
         await db.IngestionRuns.AddAsync(run, cancellationToken);
 
+    public Task DeleteAsync(IngestionRun run, CancellationToken cancellationToken = default)
+    {
+        // The prior run may have been read AsNoTracking (GetByContentHashAsync). Attach it so EF has
+        // something to delete; the FK cascades take its events and snapshots with it.
+        db.IngestionRuns.Remove(db.IngestionRuns.Local.FirstOrDefault(r => r.Id == run.Id) ?? run);
+        return Task.CompletedTask;
+    }
+
     public async Task<IReadOnlyList<IngestionRun>> SearchRunsAsync(
         string? siteCode, string? provider, string? search, int skip, int take,
         CancellationToken cancellationToken = default) =>

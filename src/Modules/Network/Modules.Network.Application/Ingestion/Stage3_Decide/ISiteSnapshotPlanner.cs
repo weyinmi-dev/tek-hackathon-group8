@@ -12,5 +12,13 @@ public interface ISiteSnapshotPlanner
     IReadOnlyList<PipelineAction> Plan(
         IReadOnlyList<SiteSnapshotPayload> snapshots,
         IReadOnlyList<AlertSnapshot> activeAlerts,
-        IReadOnlyDictionary<string, TowerSnapshot> currentTowers);
+        IReadOnlyDictionary<string, TowerSnapshot> currentTowers,
+
+        /// <summary>
+        /// The snapshot immediately preceding each of these, by site code. Passed in rather than
+        /// fetched so the planner stays pure — and it is needed, because the anomaly rules that
+        /// matter most are about *change*: fuel that fell while the generator was off is theft, and
+        /// you cannot see that in a single reading.
+        /// </summary>
+        IReadOnlyDictionary<string, SiteSnapshotPayload> previousBySite);
 }

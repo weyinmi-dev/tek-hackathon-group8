@@ -14,6 +14,16 @@ public interface IIngestionRunRepository
     Task AddAsync(IngestionRun run, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Removes a run and, by cascade, its events and snapshots.
+    ///
+    /// Used only to clear a FAILED run before retrying the same file. ContentHash is uniquely
+    /// indexed — one run per file content — so a retry cannot simply insert a second row alongside
+    /// the failure; it has to replace it. Without this, re-uploading a file that failed once fails
+    /// forever with a duplicate-key error, which is not a retry story anyone would choose.
+    /// </summary>
+    Task DeleteAsync(IngestionRun run, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// The synchronisation history, newest first. Filters narrow by the snapshot(s) a run carried,
     /// so "show me every upload for LAG0456" works even though the site code lives on the snapshot
     /// rather than on the run.

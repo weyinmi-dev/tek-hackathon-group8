@@ -15,7 +15,7 @@ namespace Modules.Network.UnitTests.Ingestion.Parsers;
 /// </summary>
 public sealed class SiteSnapshotParserTests
 {
-    private readonly JsonNetworkLogParser _parser = new();
+    private readonly JsonNetworkLogParser _parser = new(new SnapshotCalibrationOptions());
 
     private async Task<NetworkLogParseResult> ParseAsync(string json)
     {
@@ -215,6 +215,44 @@ public sealed class SiteSnapshotParserTests
 
         result.Snapshots.Should().HaveCount(2);
         result.Events.Select(e => e.TowerCode).Should().Equal("LAG0456", "ABJ0102");
+    }
+
+    /// <summary>
+    /// A bare top-level array of snapshots — the shape MTN's multi-site NOC export actually uses.
+    /// It was originally routed to the flat-log parser, which reported "missing required column
+    /// 'timestamp'" because a snapshot has no such column. It is told apart from a flat log by the
+    /// nested `site` object on its first element.
+    /// </summary>
+    [Fact]
+    public async Task TopLevelArrayOfSnapshots_DecodesAsSnapshots()
+    {
+        const string array = """
+        [
+          {
+            "requestId": "r1", "provider": "MTN Nigeria", "environment": "Production",
+            "generatedAt": "2026-07-14T12:15:30Z",
+            "site": { "siteId": "S1", "siteCode": "LAG0102", "siteName": "VI Tower", "region": "Lagos" },
+            "activeAlarms": []
+          },
+          {
+            "requestId": "r2", "provider": "MTN Nigeria", "environment": "Production",
+            "generatedAt": "2026-07-14T12:16:30Z",
+            "site": { "siteId": "S2", "siteCode": "LAG0312", "siteName": "Ikeja Tower", "region": "Lagos" },
+            "activeAlarms": [
+              { "alarmId": "ALM-300182", "severity": "Critical", "category": "Power", "status": "Active" }
+            ]
+          }
+        ]
+        """;
+
+        NetworkLogParseResult result = await ParseAsync(array);
+
+        result.Snapshots.Should().HaveCount(2);
+        result.Snapshots.Select(s => s.Site.SiteCode).Should().Equal("LAG0102", "LAG0312");
+        result.Events.Select(e => e.TowerCode).Should().Equal("LAG0102", "LAG0312");
+
+        result.Events[0].RawStatus.Should().Be("OK", "the first site reports no alarms");
+        result.Events[1].RawStatus.Should().Be("CRITICAL", "the second site has an open Critical alarm");
     }
 
     [Fact]

@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { Pill } from "./UI";
-import type { IngestionRunSummary } from "@/lib/types";
+import type { IngestionRunSummary, SyncAction, SyncChange } from "@/lib/types";
 
 /**
  * The synchronisation report for one upload.
@@ -77,6 +78,11 @@ export function SyncReport({ run }: { run: IngestionRunSummary }) {
             <Stat label="Archived" value={run.recordsArchived} tone="warn" />
             <Stat label="Telemetry" value={run.telemetryRowsAppended} tone="neutral" />
             <Stat label="Alerts" value={run.alertsCreated} tone={run.alertsCreated > 0 ? "crit" : "neutral"} />
+            <Stat
+              label="Anomalies"
+              value={run.changes.filter((c) => c.entityType === "Anomaly" && c.action === "Created").length}
+              tone="crit"
+            />
             <Stat label="Optimizations" value={run.optimizationsCreated} tone="accent" />
           </div>
 
@@ -88,6 +94,8 @@ export function SyncReport({ run }: { run: IngestionRunSummary }) {
               Nothing changed — the reported state already matches what is stored.
             </p>
           )}
+
+          {run.changes.length > 0 && <ChangeTable changes={run.changes} />}
         </div>
       )}
 
@@ -189,6 +197,194 @@ export function SyncReport({ run }: { run: IngestionRunSummary }) {
       )}
     </div>
   );
+}
+
+/**
+ * The itemised record of what the upload touched, collapsed by default.
+ *
+ * Collapsed because the counts answer the usual question ("did it work?") and this answers the
+ * unusual one ("what exactly did it do to my data?"). Expanding it should feel like opening the
+ * ledger, not like the page vomiting rows at you.
+ */
+function ChangeTable({ changes }: { changes: SyncChange[] }) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState<SyncAction | "all">("all");
+
+  const counts = {
+    Created: changes.filter((c) => c.action === "Created").length,
+    Updated: changes.filter((c) => c.action === "Updated").length,
+    Archived: changes.filter((c) => c.action === "Archived").length,
+  };
+
+  const visible = filter === "all" ? changes : changes.filter((c) => c.action === filter);
+
+  // Grouped by entity type so the reader scans "what kind of thing", not a flat 30-row wall.
+  const grouped = visible.reduce<Record<string, SyncChange[]>>((acc, c) => {
+    (acc[c.entityType] ??= []).push(c);
+    return acc;
+  }, {});
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="mono uppr"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          padding: "8px 10px",
+          background: "var(--bg-2)",
+          border: "1px solid var(--line)",
+          borderRadius: 8,
+          color: "var(--ink-2)",
+          fontSize: 9,
+          letterSpacing: ".14em",
+          cursor: "pointer",
+        }}
+      >
+        <span style={{ color: "var(--accent)", width: 10 }}>{open ? "▾" : "▸"}</span>
+        <span>{changes.length} record{changes.length === 1 ? "" : "s"} changed</span>
+        <span style={{ flex: 1 }} />
+        <span style={{ color: "var(--ink-4)", letterSpacing: 0 }}>
+          {open ? "Hide" : "View"}
+        </span>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            border: "1px solid var(--line)",
+            borderTop: "none",
+            borderRadius: "0 0 8px 8px",
+            overflow: "hidden",
+          }}
+        >
+          {/* Filter by what happened — during an incident the only rows that matter are the
+              archived ones, and hunting them out of thirty creates is a waste of the operator. */}
+          <div
+            style={{
+              display: "flex",
+              gap: 4,
+              padding: "8px 10px",
+              borderBottom: "1px solid var(--line)",
+              background: "var(--bg-2)",
+            }}
+          >
+            <FilterChip on={filter === "all"} onClick={() => setFilter("all")} tone="neutral">
+              All {changes.length}
+            </FilterChip>
+            {counts.Created > 0 && (
+              <FilterChip on={filter === "Created"} onClick={() => setFilter("Created")} tone="ok">
+                Created {counts.Created}
+              </FilterChip>
+            )}
+            {counts.Updated > 0 && (
+              <FilterChip on={filter === "Updated"} onClick={() => setFilter("Updated")} tone="info">
+                Updated {counts.Updated}
+              </FilterChip>
+            )}
+            {counts.Archived > 0 && (
+              <FilterChip on={filter === "Archived"} onClick={() => setFilter("Archived")} tone="warn">
+                Archived {counts.Archived}
+              </FilterChip>
+            )}
+          </div>
+
+          <div style={{ maxHeight: 340, overflowY: "auto" }}>
+            {Object.entries(grouped).map(([type, rows]) => (
+              <div key={type}>
+                <div
+                  className="mono uppr"
+                  style={{
+                    padding: "7px 10px",
+                    fontSize: 8,
+                    letterSpacing: ".16em",
+                    color: "var(--ink-4)",
+                    background: "var(--bg-2)",
+                    borderBottom: "1px solid var(--line)",
+                    position: "sticky",
+                    top: 0,
+                  }}
+                >
+                  {type} ({rows.length})
+                </div>
+
+                {rows.map((c, i) => (
+                  <div
+                    key={`${c.entityType}-${c.entityKey}-${i}`}
+                    className="mono"
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "80px 130px 1fr",
+                      gap: 10,
+                      alignItems: "baseline",
+                      padding: "8px 10px",
+                      fontSize: 10.5,
+                      borderBottom: "1px solid var(--line)",
+                      borderLeft: `2px solid ${actionColor(c.action)}`,
+                    }}
+                  >
+                    <span
+                      className="uppr"
+                      style={{ fontSize: 8, letterSpacing: ".12em", color: actionColor(c.action) }}
+                    >
+                      {actionLabel(c.action)}
+                    </span>
+                    <span style={{ color: "var(--ink)", wordBreak: "break-all" }}>{c.entityKey}</span>
+                    <span style={{ color: "var(--ink-3)", lineHeight: 1.5 }}>{c.detail ?? "—"}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FilterChip({
+  on,
+  onClick,
+  tone,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  tone: "ok" | "info" | "warn" | "neutral";
+  children: React.ReactNode;
+}) {
+  const color = tone === "neutral" ? "var(--ink-3)" : `var(--${tone})`;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mono uppr"
+      style={{
+        padding: "3px 8px",
+        fontSize: 8,
+        letterSpacing: ".12em",
+        borderRadius: 5,
+        cursor: "pointer",
+        border: `1px solid ${on ? color : "var(--line)"}`,
+        background: on ? `color-mix(in oklch, ${color} 14%, transparent)` : "transparent",
+        color: on ? color : "var(--ink-4)",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function actionLabel(action: SyncAction): string {
+  return action;
+}
+
+function actionColor(action: SyncAction): string {
+  return action === "Created" ? "var(--ok)" : action === "Updated" ? "var(--info)" : "var(--warn)";
 }
 
 function Stat({

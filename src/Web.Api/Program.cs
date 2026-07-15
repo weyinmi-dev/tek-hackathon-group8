@@ -94,7 +94,7 @@ builder.Services
     .AddInfrastructure(builder.Configuration)
     .AddIdentityApplication()
     .AddIdentityInfrastructure(builder.Configuration)
-    .AddNetworkApplication()
+    .AddNetworkApplication(builder.Configuration)
     .AddNetworkInfrastructure(builder.Configuration)
     .AddAlertsApplication()
     .AddAlertsInfrastructure(builder.Configuration)
