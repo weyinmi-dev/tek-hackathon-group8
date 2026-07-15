@@ -1,0 +1,433 @@
+[
+  {
+    "requestId": "8f3a1c2e-4b6d-4e21-9a7f-1d2e3f4a5b6c",
+    "provider": "MTN Nigeria",
+    "environment": "Production",
+    "generatedAt": "2026-07-15T07:06:35.030Z",
+    "site": {
+      "siteId": "MTN-LAG-1001",
+      "siteCode": "LAG-IKJ-014",
+      "siteName": "Computer Village Ikeja",
+      "region": "Lagos",
+      "cluster": "Ikeja",
+      "latitude": 6.6018,
+      "longitude": 3.3515,
+      "technology": ["2G", "3G", "4G", "5G"],
+      "vendor": "Huawei",
+      "status": "Operational",
+      "healthScore": 94,
+      "commissionedDate": "2020-03-11",
+      "lastHeartbeat": "2026-07-15T07:06:05.030Z",
+      "equipment": [
+        { "equipmentId": "BBU-1001", "type": "Baseband Unit", "model": "BBU5900", "status": "Healthy" },
+        { "equipmentId": "RRU-1001", "type": "Remote Radio Unit", "model": "RRU5302", "status": "Healthy" },
+        { "equipmentId": "BAT-1001", "type": "Battery Bank", "status": "Charging" }
+      ]
+    },
+    "environmentalMetrics": {
+      "temperature": 31.8,
+      "humidity": 74,
+      "batteryVoltage": 53.1,
+      "generatorFuelPercent": 91,
+      "generatorRunning": false,
+      "mainPowerAvailable": true,
+      "airConditionerStatus": "Running",
+      "doorOpen": false,
+      "smokeDetected": false
+    },
+    "performanceMetrics": {
+      "measurementInterval": "15 Minutes",
+      "capturedAt": "2026-07-15T07:05:35.030Z",
+      "availabilityPercent": 99.95,
+      "connectedUsers": 2180,
+      "downlinkTrafficGb": 588.3,
+      "uplinkTrafficGb": 122.7,
+      "packetLossPercent": 0.06,
+      "latencyMs": 9,
+      "cellUtilizationPercent": 88,
+      "kpis": [
+        { "name": "RSRP", "value": -81, "unit": "dBm" },
+        { "name": "SINR", "value": 27.6, "unit": "dB" },
+        { "name": "PRB Utilization", "value": 85.2, "unit": "%" }
+      ]
+    },
+    "activeAlarms": [],
+    "maintenance": {
+      "lastMaintenanceDate": "2026-06-20",
+      "nextScheduledMaintenance": "2026-08-20",
+      "openTickets": [],
+      "maintenanceHistory": [
+        { "ticketId": "TT-1001", "completedAt": "2026-06-20T09:15:00Z", "engineer": "Ibrahim Musa", "action": "Antenna alignment check" }
+      ]
+    }
+  },
+  {
+    "requestId": "2b7e9d4f-6a1c-4f8e-b3d2-7c8e9f0a1b2c",
+    "provider": "MTN Nigeria",
+    "environment": "Production",
+    "generatedAt": "2026-07-15T07:06:35.030Z",
+    "site": {
+      "siteId": "MTN-LAG-1002",
+      "siteCode": "LAG-LGI-007",
+      "siteName": "Marina Lagos Island",
+      "region": "Lagos",
+      "cluster": "Lagos Island",
+      "latitude": 6.4531,
+      "longitude": 3.3958,
+      "technology": ["3G", "4G", "5G"],
+      "vendor": "Ericsson",
+      "status": "Operational",
+      "healthScore": 98,
+      "commissionedDate": "2022-01-25",
+      "lastHeartbeat": "2026-07-15T07:06:05.030Z",
+      "equipment": [
+        { "equipmentId": "BBU-1002", "type": "Baseband Unit", "model": "Baseband 6630", "status": "Healthy" },
+        { "equipmentId": "RRU-1002", "type": "Remote Radio Unit", "model": "AIR 6449", "status": "Healthy" },
+        { "equipmentId": "BAT-1002", "type": "Battery Bank", "status": "Full" }
+      ]
+    },
+    "environmentalMetrics": {
+      "temperature": 29.6,
+      "humidity": 81,
+      "batteryVoltage": 53.6,
+      "generatorFuelPercent": 100,
+      "generatorRunning": false,
+      "mainPowerAvailable": true,
+      "airConditionerStatus": "Running",
+      "doorOpen": false,
+      "smokeDetected": false
+    },
+    "performanceMetrics": {
+      "measurementInterval": "15 Minutes",
+      "capturedAt": "2026-07-15T07:05:35.030Z",
+      "availabilityPercent": 99.99,
+      "connectedUsers": 3050,
+      "downlinkTrafficGb": 701.9,
+      "uplinkTrafficGb": 158.4,
+      "packetLossPercent": 0.03,
+      "latencyMs": 7,
+      "cellUtilizationPercent": 79,
+      "kpis": [
+        { "name": "RSRP", "value": -78, "unit": "dBm" },
+        { "name": "SINR", "value": 30.1, "unit": "dB" },
+        { "name": "PRB Utilization", "value": 74.5, "unit": "%" }
+      ]
+    },
+    "activeAlarms": [],
+    "maintenance": {
+      "lastMaintenanceDate": "2026-07-05",
+      "nextScheduledMaintenance": "2026-09-05",
+      "openTickets": [],
+      "maintenanceHistory": [
+        { "ticketId": "TT-1002", "completedAt": "2026-07-05T13:00:00Z", "engineer": "Folake Adeyemi", "action": "Routine PM completed" }
+      ]
+    }
+  },
+  {
+    "requestId": "5c1d8a3b-9e2f-4d6a-8b1c-3e4f5a6b7c8d",
+    "provider": "MTN Nigeria",
+    "environment": "Production",
+    "generatedAt": "2026-07-15T07:06:35.030Z",
+    "site": {
+      "siteId": "MTN-LAG-1003",
+      "siteCode": "LAG-SUR-022",
+      "siteName": "Adeniran Ogunsanya Surulere",
+      "region": "Lagos",
+      "cluster": "Surulere",
+      "latitude": 6.5027,
+      "longitude": 3.3547,
+      "technology": ["2G", "3G", "4G"],
+      "vendor": "ZTE",
+      "status": "Operational",
+      "healthScore": 63,
+      "commissionedDate": "2018-09-02",
+      "lastHeartbeat": "2026-07-15T07:06:05.030Z",
+      "equipment": [
+        { "equipmentId": "BBU-1003", "type": "Baseband Unit", "model": "ZXSDR B8200", "status": "Warning" },
+        { "equipmentId": "RRU-1003", "type": "Remote Radio Unit", "model": "ZXSDR R8972", "status": "Healthy" },
+        { "equipmentId": "BAT-1003", "type": "Battery Bank", "status": "Discharging" }
+      ]
+    },
+    "environmentalMetrics": {
+      "temperature": 36.7,
+      "humidity": 69,
+      "batteryVoltage": 46.2,
+      "generatorFuelPercent": 34,
+      "generatorRunning": true,
+      "mainPowerAvailable": false,
+      "airConditionerStatus": "Fault",
+      "doorOpen": false,
+      "smokeDetected": false
+    },
+    "performanceMetrics": {
+      "measurementInterval": "15 Minutes",
+      "capturedAt": "2026-07-15T07:05:35.030Z",
+      "availabilityPercent": 98.72,
+      "connectedUsers": 1310,
+      "downlinkTrafficGb": 245.6,
+      "uplinkTrafficGb": 52.1,
+      "packetLossPercent": 1.12,
+      "latencyMs": 41,
+      "cellUtilizationPercent": 91,
+      "kpis": [
+        { "name": "RSRP", "value": -102, "unit": "dBm" },
+        { "name": "SINR", "value": 9.8, "unit": "dB" },
+        { "name": "PRB Utilization", "value": 93.7, "unit": "%" }
+      ]
+    },
+    "activeAlarms": [
+      {
+        "alarmId": "ALM-1003-A",
+        "severity": "Major",
+        "category": "Power",
+        "type": "Grid Power Failure",
+        "status": "Active",
+        "source": "Generator Controller",
+        "raisedAt": "2026-07-15T05:40:12.000Z",
+        "description": "Commercial grid lost. Generator supplying load, fuel below 40%."
+      },
+      {
+        "alarmId": "ALM-1003-B",
+        "severity": "Minor",
+        "category": "Environment",
+        "type": "AC Unit Fault",
+        "status": "Active",
+        "source": "Environmental Controller",
+        "raisedAt": "2026-07-15T06:10:44.000Z",
+        "description": "Air conditioner unit 1 reporting compressor fault."
+      }
+    ],
+    "maintenance": {
+      "lastMaintenanceDate": "2026-05-30",
+      "nextScheduledMaintenance": "2026-07-30",
+      "openTickets": [
+        {
+          "ticketId": "TT-1003",
+          "priority": "High",
+          "status": "Dispatched",
+          "assignedEngineer": { "engineerId": "ENG-014", "name": "Chinedu Okafor" },
+          "issue": "Grid power investigation and AC fault",
+          "createdAt": "2026-07-15T06:15:00.000Z",
+          "estimatedArrival": "2026-07-15T09:30:00.000Z"
+        }
+      ],
+      "maintenanceHistory": []
+    }
+  },
+  {
+    "requestId": "9d2e4f6a-1b3c-4a5d-9e7f-6a7b8c9d0e1f",
+    "provider": "MTN Nigeria",
+    "environment": "Production",
+    "generatedAt": "2026-07-15T07:06:35.030Z",
+    "site": {
+      "siteId": "MTN-LAG-1004",
+      "siteCode": "LAG-IKO-009",
+      "siteName": "Ikorodu Garage",
+      "region": "Lagos",
+      "cluster": "Ikorodu",
+      "latitude": 6.6194,
+      "longitude": 3.5105,
+      "technology": ["2G", "3G", "4G"],
+      "vendor": "Huawei",
+      "status": "Operational",
+      "healthScore": 80,
+      "commissionedDate": "2019-06-14",
+      "lastHeartbeat": "2026-07-15T07:06:05.030Z",
+      "equipment": [
+        { "equipmentId": "BBU-1004", "type": "Baseband Unit", "model": "BBU3900", "status": "Healthy" },
+        { "equipmentId": "GEN-1004", "type": "Generator", "model": "Mikano 60KVA", "status": "Running" },
+        { "equipmentId": "BAT-1004", "type": "Battery Bank", "status": "Discharging" }
+      ]
+    },
+    "environmentalMetrics": {
+      "temperature": 33.9,
+      "humidity": 72,
+      "batteryVoltage": 48.4,
+      "generatorFuelPercent": 61,
+      "generatorRunning": true,
+      "mainPowerAvailable": false,
+      "airConditionerStatus": "Running",
+      "doorOpen": false,
+      "smokeDetected": false
+    },
+    "performanceMetrics": {
+      "measurementInterval": "15 Minutes",
+      "capturedAt": "2026-07-15T07:05:35.030Z",
+      "availabilityPercent": 99.61,
+      "connectedUsers": 870,
+      "downlinkTrafficGb": 168.2,
+      "uplinkTrafficGb": 33.9,
+      "packetLossPercent": 0.31,
+      "latencyMs": 24,
+      "cellUtilizationPercent": 66,
+      "kpis": [
+        { "name": "RSRP", "value": -91, "unit": "dBm" },
+        { "name": "SINR", "value": 19.7, "unit": "dB" },
+        { "name": "PRB Utilization", "value": 61.3, "unit": "%" }
+      ]
+    },
+    "activeAlarms": [
+      {
+        "alarmId": "ALM-1004-A",
+        "severity": "Major",
+        "category": "Power",
+        "type": "Grid Power Failure",
+        "status": "Active",
+        "source": "Generator Controller",
+        "raisedAt": "2026-07-15T06:50:20.000Z",
+        "description": "Commercial grid lost. Generator supplying load."
+      }
+    ],
+    "maintenance": {
+      "lastMaintenanceDate": "2026-06-10",
+      "nextScheduledMaintenance": "2026-08-10",
+      "openTickets": [],
+      "maintenanceHistory": [
+        { "ticketId": "TT-1004", "completedAt": "2026-06-10T10:20:00Z", "engineer": "Ngozi Eze", "action": "Generator service and refuel" }
+      ]
+    }
+  },
+  {
+    "requestId": "3a5b7c9d-2e4f-4b6a-8c1d-9e0f1a2b3c4d",
+    "provider": "MTN Nigeria",
+    "environment": "Production",
+    "generatedAt": "2026-07-15T07:06:35.030Z",
+    "site": {
+      "siteId": "MTN-LAG-1005",
+      "siteCode": "LAG-LKI-031",
+      "siteName": "Lekki Phase 1",
+      "region": "Lagos",
+      "cluster": "Lekki",
+      "latitude": 6.4433,
+      "longitude": 3.4726,
+      "technology": ["4G", "5G"],
+      "vendor": "Nokia",
+      "status": "Operational",
+      "healthScore": 97,
+      "commissionedDate": "2023-04-19",
+      "lastHeartbeat": "2026-07-15T07:06:05.030Z",
+      "equipment": [
+        { "equipmentId": "BBU-1005", "type": "Baseband Unit", "model": "AirScale BTS", "status": "Healthy" },
+        { "equipmentId": "RRU-1005", "type": "Remote Radio Unit", "model": "AirScale AEQE", "status": "Healthy" },
+        { "equipmentId": "BAT-1005", "type": "Battery Bank", "status": "Full" }
+      ]
+    },
+    "environmentalMetrics": {
+      "temperature": 30.2,
+      "humidity": 77,
+      "batteryVoltage": 53.8,
+      "generatorFuelPercent": 95,
+      "generatorRunning": false,
+      "mainPowerAvailable": true,
+      "airConditionerStatus": "Running",
+      "doorOpen": false,
+      "smokeDetected": false
+    },
+    "performanceMetrics": {
+      "measurementInterval": "15 Minutes",
+      "capturedAt": "2026-07-15T07:05:35.030Z",
+      "availabilityPercent": 99.97,
+      "connectedUsers": 1960,
+      "downlinkTrafficGb": 533.7,
+      "uplinkTrafficGb": 140.5,
+      "packetLossPercent": 0.05,
+      "latencyMs": 8,
+      "cellUtilizationPercent": 76,
+      "kpis": [
+        { "name": "RSRP", "value": -80, "unit": "dBm" },
+        { "name": "SINR", "value": 29.4, "unit": "dB" },
+        { "name": "PRB Utilization", "value": 70.9, "unit": "%" }
+      ]
+    },
+    "activeAlarms": [],
+    "maintenance": {
+      "lastMaintenanceDate": "2026-06-28",
+      "nextScheduledMaintenance": "2026-08-28",
+      "openTickets": [],
+      "maintenanceHistory": [
+        { "ticketId": "TT-1005", "completedAt": "2026-06-28T14:45:00Z", "engineer": "Bolanle Adisa", "action": "5G carrier optimization" }
+      ]
+    }
+  },
+  {
+    "requestId": "7e9f1a3b-5c6d-4e8f-9a1b-2c3d4e5f6a7b",
+    "provider": "MTN Nigeria",
+    "environment": "Production",
+    "generatedAt": "2026-07-15T07:06:35.030Z",
+    "site": {
+      "siteId": "MTN-LAG-1006",
+      "siteCode": "LAG-APP-018",
+      "siteName": "Apapa Wharf",
+      "region": "Lagos",
+      "cluster": "Apapa",
+      "latitude": 6.4432,
+      "longitude": 3.3595,
+      "technology": ["2G", "3G", "4G"],
+      "vendor": "ZTE",
+      "status": "Under Maintenance",
+      "healthScore": 74,
+      "commissionedDate": "2017-02-08",
+      "lastHeartbeat": "2026-07-15T07:04:50.030Z",
+      "equipment": [
+        { "equipmentId": "BBU-1006", "type": "Baseband Unit", "model": "ZXSDR B8200", "status": "Healthy" },
+        { "equipmentId": "RRU-1006", "type": "Remote Radio Unit", "model": "ZXSDR R8972", "status": "Under Test" },
+        { "equipmentId": "BAT-1006", "type": "Battery Bank", "status": "Charging" }
+      ]
+    },
+    "environmentalMetrics": {
+      "temperature": 34.5,
+      "humidity": 83,
+      "batteryVoltage": 51.3,
+      "generatorFuelPercent": 78,
+      "generatorRunning": false,
+      "mainPowerAvailable": true,
+      "airConditionerStatus": "Running",
+      "doorOpen": true,
+      "smokeDetected": false
+    },
+    "performanceMetrics": {
+      "measurementInterval": "15 Minutes",
+      "capturedAt": "2026-07-15T07:05:35.030Z",
+      "availabilityPercent": 99.20,
+      "connectedUsers": 1580,
+      "downlinkTrafficGb": 302.4,
+      "uplinkTrafficGb": 64.8,
+      "packetLossPercent": 0.22,
+      "latencyMs": 18,
+      "cellUtilizationPercent": 84,
+      "kpis": [
+        { "name": "RSRP", "value": -88, "unit": "dBm" },
+        { "name": "SINR", "value": 22.3, "unit": "dB" },
+        { "name": "PRB Utilization", "value": 80.1, "unit": "%" }
+      ]
+    },
+    "activeAlarms": [
+      {
+        "alarmId": "ALM-1006-A",
+        "severity": "Minor",
+        "category": "Physical",
+        "type": "Cabinet Door Open",
+        "status": "Active",
+        "source": "Site Access Sensor",
+        "raisedAt": "2026-07-15T06:58:00.000Z",
+        "description": "Cabinet door open — field engineer on site for scheduled maintenance."
+      }
+    ],
+    "maintenance": {
+      "lastMaintenanceDate": "2026-07-15",
+      "nextScheduledMaintenance": "2026-09-15",
+      "openTickets": [
+        {
+          "ticketId": "TT-1006",
+          "priority": "Medium",
+          "status": "In Progress",
+          "assignedEngineer": { "engineerId": "ENG-027", "name": "Tunde Bakare" },
+          "issue": "Scheduled RRU swap",
+          "createdAt": "2026-07-15T06:30:00.000Z",
+          "estimatedArrival": "2026-07-15T07:00:00.000Z"
+        }
+      ],
+      "maintenanceHistory": []
+    }
+  }
+]

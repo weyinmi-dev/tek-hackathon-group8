@@ -82,7 +82,7 @@ internal sealed class GeoCacheWarmer(
             if (stoppingToken.IsCancellationRequested) break;
             if (string.IsNullOrWhiteSpace(tower.Code)) { skipped++; continue; }
 
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             cts.CancelAfter(PerSiteTimeout);
 
             try
@@ -94,7 +94,7 @@ internal sealed class GeoCacheWarmer(
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { return; }
             catch (OperationCanceledException)
             {
-                logger.LogInformation("GeoCacheWarmer hit per-site timeout for {Code}; will retry on the next sweep.", tower.Code);
+                logger.LogInformation("GeoCacheWarmer hit per-site timeout for {Code}; will retry on next deploy.", tower.Code);
                 failed++;
             }
             catch (Exception ex)
